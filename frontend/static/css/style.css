@@ -10837,6 +10837,56 @@ main.main-content.tournaments-page .tournament-action-btn.danger:hover {
     padding: 22px 24px 24px;
 }
 
+/* Окно турнира выше экрана: поля прокручиваются, кнопки остаются внизу. */
+#tournamentModal .modal-content {
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    max-height: min(calc(100vh - 40px), 780px) !important;
+}
+
+#tournamentModal .tournament-catalog-modal-header {
+    flex: 0 0 auto;
+}
+
+#tournamentModal .tournament-catalog-form {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+#tournamentModal .tournament-catalog-form-body {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 17px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 22px 24px 18px;
+}
+
+#tournamentModal .tournament-catalog-form-body > .full {
+    grid-column: 1 / -1;
+}
+
+#tournamentModal .tournament-catalog-form-error {
+    flex: 0 0 auto;
+    margin: 0 24px;
+}
+
+#tournamentModal .tournament-catalog-form-actions {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 14px 24px 18px;
+    border-top: 1px solid #eceef1;
+    background: #fff;
+}
+
 .tournament-catalog-field {
     display: grid;
     gap: 8px;
@@ -10941,13 +10991,21 @@ main.main-content.tournaments-page .tournament-action-btn.danger:hover {
 
 .age-group-controls {
     display: grid;
-    grid-template-columns: minmax(120px, 160px) minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 148px) minmax(0, 1fr) auto;
     gap: 8px;
     align-items: center;
+    min-width: 0;
+}
+
+.age-group-controls select,
+.age-group-controls input {
+    width: 100%;
+    min-width: 0;
 }
 
 .age-group-controls .btn-secondary {
     min-height: 45px !important;
+    padding: 0 14px !important;
     white-space: nowrap;
 }
 
@@ -12556,11 +12614,20 @@ main.main-content.tournaments-page .tournament-action-btn.danger:hover {
     .tournament-card-grid,
     .team-catalog-grid,
     .stadium-catalog-grid,
-    .tournament-catalog-form {
+    .tournament-catalog-form,
+    #tournamentModal .tournament-catalog-form-body {
         grid-template-columns: 1fr;
     }
 
     .tournament-catalog-form {
+        padding: 18px;
+    }
+
+    #tournamentModal .tournament-catalog-form {
+        padding: 0;
+    }
+
+    #tournamentModal .tournament-catalog-form-body {
         padding: 18px;
     }
 

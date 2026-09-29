@@ -8,7 +8,7 @@
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026081012">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026092911">
 </head>
 <body>
     {% include '_sidebar.html' %}
@@ -190,6 +190,7 @@
                 </button>
             </header>
             <form id="tournamentForm" class="tournament-catalog-form">
+                <div class="tournament-catalog-form-body">
                 <label class="tournament-poster-picker full">
                     <input id="tournamentPoster" type="file" accept="image/*" hidden>
                     <span class="tournament-poster-preview" id="tournamentPosterPreview" aria-hidden="true">
@@ -246,6 +247,7 @@
                         <small>Турнир появится в афише на странице входа. Снимите галочку, пока турнир черновик.</small>
                     </span>
                 </label>
+                </div>
                 <div class="tournament-catalog-form-error" id="tournamentFormError" hidden></div>
                 <footer class="tournament-catalog-form-actions full">
                     <button class="btn-secondary" type="button" data-close-modal="tournamentModal">Отмена</button>
