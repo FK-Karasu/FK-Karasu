@@ -123,16 +123,21 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-
 # PostgreSQL URL для Railway (автоматически устанавливается)
 database_url = os.environ.get('DATABASE_URL')
 if database_url:
-    # Railway PostgreSQL использует postgres://, но SQLAlchemy требует postgresql://
+    # Railway отдаёт postgres://. SQLAlchemy 2 по схеме postgresql://
+    # берёт драйвер psycopg 3, которого в образе нет: стоит psycopg2.
     if database_url.startswith('postgres://'):
-        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        database_url = 'postgresql+psycopg2://' + database_url[len('postgres://'):]
+    elif database_url.startswith('postgresql+psycopg://'):
+        database_url = 'postgresql+psycopg2://' + database_url[len('postgresql+psycopg://'):]
+    elif database_url.startswith('postgresql://'):
+        database_url = 'postgresql+psycopg2://' + database_url[len('postgresql://'):]
     elif database_url.startswith('sqlite:///') and not database_url.startswith('sqlite:////'):
         sqlite_path = database_url.replace('sqlite:///', '', 1)
         if not os.path.isabs(sqlite_path):
             sqlite_path = os.path.join(basedir, sqlite_path)
         database_url = 'sqlite:///' + sqlite_path.replace('\\', '/')
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    db_label = 'POSTGRESQL' if database_url.startswith('postgresql://') else 'SQLITE'
+    db_label = 'POSTGRESQL' if database_url.startswith('postgresql') else 'SQLITE'
     print(f"✅ ИСПОЛЬЗУЕТСЯ {db_label}: {database_url.split('@')[-1]}") # Логируем (без пароля)
 else:
     # Локальная разработка - SQLite
