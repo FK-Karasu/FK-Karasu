@@ -9,6 +9,7 @@ import http from 'node:http';
 import https from 'node:https';
 import os from 'node:os';
 import fs from 'node:fs';
+import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const CONFIG = {
@@ -28,6 +29,14 @@ const CONFIG = {
   accessBackfillTo: process.env.HIK_ACCESS_BACKFILL_TO || '',
   accessBackfillOnly: (process.env.HIK_ACCESS_BACKFILL_ONLY || 'false') === 'true',
   accessBackfillWindowMs: Number(process.env.HIK_ACCESS_BACKFILL_WINDOW_MS || 10 * 60 * 1000),
+  // Первый запуск без файла курсора: насколько назад дочитывать события.
+  accessFirstRunLookbackMs: Number(process.env.HIK_ACCESS_FIRST_RUN_LOOKBACK_MS || 24 * 60 * 60 * 1000),
+  // Сохранённый курсор старше этого срока обрезаем (терминал столько всё равно не хранит).
+  accessMaxLookbackMs: Number(process.env.HIK_ACCESS_MAX_LOOKBACK_MS || 7 * 24 * 60 * 60 * 1000),
+  accessPollWindowMs: Number(process.env.HIK_ACCESS_POLL_WINDOW_MS || 60 * 60 * 1000),
+  accessMaxWindowsPerTick: Number(process.env.HIK_ACCESS_MAX_WINDOWS_PER_TICK || 24),
+  accessPageSize: Number(process.env.HIK_ACCESS_PAGE_SIZE || 30),
+  accessMaxPages: Number(process.env.HIK_ACCESS_MAX_PAGES || 500),
   bridgeId: process.env.BRIDGE_ID || 'hikvision-school-bridge',
   defaultDoorRight: process.env.HIK_DOOR_RIGHT || '1',
   defaultPlanTemplateNo: process.env.HIK_PLAN_TEMPLATE_NO || '1',
@@ -48,6 +57,10 @@ let faceStateDirty = false;
 
 // Версию поднимаем, когда прежним записям больше нельзя доверять.
 const FACE_STATE_VERSION = 2;
+
+// Курсор событий прохода по каждому терминалу (см. loadAccessCursors).
+const ACCESS_CURSOR_FILE = process.env.HIK_ACCESS_CURSOR_FILE
+  || path.join(path.dirname(FACE_STATE_FILE), '.karasu-bridge-access-cursor.json');
 
 function loadFaceState() {
   if (faceState) return faceState;
@@ -156,7 +169,6 @@ function forgetFace(device, employeeNo) {
 const startTime = Date.now();
 const liveLogs = [];
 const accessEventSeen = new Set();
-const accessEventPollState = new Map();
 let currentCommandId = null;
 let currentAction = 'idle';
 let lastHeartbeatAt = 0;
@@ -950,41 +962,163 @@ function trimSeenEvents() {
   keep.forEach((item) => accessEventSeen.add(item));
 }
 
-async function queryAccessEvents(device, startedAt, endedAt) {
-  const body = {
-    AcsEventCond: {
-      searchID: `${Date.now()}-${device.name || device.ip}`,
-      searchResultPosition: 0,
-      maxResults: 40,
-      major: 0,
-      minor: 0,
-      picEnable: true,
-      startTime: formatHikvisionTime(startedAt),
-      endTime: formatHikvisionTime(endedAt),
-    },
-  };
-  const res = await requestDigest(
-    device,
-    'POST',
-    '/ISAPI/AccessControl/AcsEvent?format=json',
-    JSON.stringify(body),
-    { 'Content-Type': 'application/json' },
-    CONFIG.deviceProbeTimeoutMs
-  );
-  assertOk('access-event', res);
-  const data = parseJsonSafe(res.body) || {};
-  const root = data.AcsEvent || data;
-  const list = root.InfoList || root.infoList || root.EventList || root.eventList || [];
-  return Array.isArray(list) ? list : [];
+// ---------------------------------------------------------------------------
+// Курсор опроса событий прохода: "до какого момента терминал уже полностью
+// разобран". Хранится в файле, чтобы после перезапуска bridge дочитать то, что
+// случилось, пока он был выключен или сервер был недоступен.
+// Формат: { "version": 1, "devices": { "<name@ip:port>": { "cursor": ISO, "updated_at": ISO } } }
+// ---------------------------------------------------------------------------
+const ACCESS_CURSOR_VERSION = 1;
+let accessCursorState = null;
+
+function loadAccessCursors(file = ACCESS_CURSOR_FILE) {
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (data && data.version === ACCESS_CURSOR_VERSION && data.devices && typeof data.devices === 'object') {
+      return data;
+    }
+  } catch {
+    // нет файла или он битый: начинаем с первого запуска
+  }
+  return { version: ACCESS_CURSOR_VERSION, devices: {} };
 }
 
-async function sendAccessEvent(device, event) {
+/** Атомарная запись: во временный файл, затем rename поверх старого. */
+function saveAccessCursors(state, file = ACCESS_CURSOR_FILE) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf8');
+  fs.renameSync(tmp, file);
+}
+
+function getAccessCursor(state, key) {
+  const raw = state?.devices?.[key]?.cursor;
+  if (!raw) return null;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function setAccessCursor(state, key, date, extra = {}) {
+  state.devices[key] = { ...(state.devices[key] || {}), ...extra, cursor: date.toISOString(), updated_at: new Date().toISOString() };
+}
+
+function accessCursors() {
+  if (!accessCursorState) accessCursorState = loadAccessCursors();
+  return accessCursorState;
+}
+
+function persistAccessCursor(device, date) {
+  const state = accessCursors();
+  setAccessCursor(state, getDeviceKey(device), date, { device_name: device.name || '', device_ip: device.ip });
+  try {
+    saveAccessCursors(state);
+  } catch (error) {
+    // Курсор в памяти всё равно сдвинут; при перезапуске просто перечитаем окно ещё раз.
+    console.warn(`[access] Не удалось сохранить курсор событий ${ACCESS_CURSOR_FILE}: ${error.message}`);
+  }
+}
+
+/**
+ * Читает все страницы одного поиска AcsEvent. Терминал отдаёт события порциями
+ * (обычно не больше 30) и пишет responseStatusStrg = "MORE", пока есть ещё.
+ * requestPage(position, pageSize) должен вернуть корень ответа (AcsEvent).
+ */
+async function fetchAllAccessEventPages(requestPage, { pageSize = 30, maxPages = 500 } = {}) {
+  const all = [];
+  let position = 0;
+  for (let page = 0; page < maxPages; page += 1) {
+    const root = (await requestPage(position, pageSize)) || {};
+    const rawList = root.InfoList || root.infoList || root.EventList || root.eventList || [];
+    const list = Array.isArray(rawList) ? rawList : [];
+    all.push(...list);
+
+    const status = String(root.responseStatusStrg || '').trim().toUpperCase();
+    const reported = Number(root.numOfMatches);
+    const numOfMatches = root.numOfMatches !== undefined && Number.isFinite(reported) ? reported : list.length;
+    const totalMatches = Number(root.totalMatches);
+    position += numOfMatches;
+
+    if (status === 'NO MATCH' || status === 'NO_MATCH') return all;
+    if (numOfMatches <= 0) {
+      if (status === 'MORE') {
+        throw new Error(`access-event paging stalled at position ${position} (MORE without results)`);
+      }
+      return all;
+    }
+    if (status === 'MORE') continue;
+    if (status) return all; // OK и прочие финальные статусы
+    // Статуса нет: ориентируемся на totalMatches.
+    if (Number.isFinite(totalMatches) && totalMatches > position) continue;
+    return all;
+  }
+  // Страниц больше лимита: не делаем вид, что прочитали всё, окно повторится.
+  throw new Error(`access-event paging exceeded ${maxPages} pages (${all.length} events read)`);
+}
+
+async function queryAccessEvents(device, startedAt, endedAt) {
+  const searchID = `${Date.now()}-${device.name || device.ip}`;
+  return fetchAllAccessEventPages(async (position, pageSize) => {
+    const body = {
+      AcsEventCond: {
+        searchID,
+        searchResultPosition: position,
+        maxResults: pageSize,
+        major: 0,
+        minor: 0,
+        picEnable: true,
+        startTime: formatHikvisionTime(startedAt),
+        endTime: formatHikvisionTime(endedAt),
+      },
+    };
+    const res = await requestDigest(
+      device,
+      'POST',
+      '/ISAPI/AccessControl/AcsEvent?format=json',
+      JSON.stringify(body),
+      { 'Content-Type': 'application/json' },
+      CONFIG.deviceProbeTimeoutMs
+    );
+    assertOk('access-event', res);
+    const data = parseJsonSafe(res.body) || {};
+    return data.AcsEvent || data;
+  }, { pageSize: CONFIG.accessPageSize, maxPages: CONFIG.accessMaxPages });
+}
+
+function sortAccessEventsByTime(events) {
+  return events
+    .map((event, index) => ({ event, index, t: Date.parse(getAccessEventTime(event)) }))
+    .sort((a, b) => {
+      const at = Number.isNaN(a.t) ? Infinity : a.t;
+      const bt = Number.isNaN(b.t) ? Infinity : b.t;
+      return at === bt ? a.index - b.index : at - bt;
+    })
+    .map((item) => item.event);
+}
+
+/** Ошибки, после которых событие надо отправить ещё раз (сервер/сеть/ключ). */
+function isRetryableAccessStatus(status) {
+  return status >= 500 || [401, 403, 404, 408, 425, 429].includes(status);
+}
+
+class AccessDeliveryError extends Error {
+  constructor(message, status = 0) {
+    super(message);
+    this.code = 'ACCESS_EVENT_RETRY';
+    this.status = status;
+  }
+}
+
+/**
+ * Отправляет событие на сервер. Отметка "уже отправлено" ставится только после
+ * ответа сервера. Сеть/5xx -> бросает AccessDeliveryError (курсор не двигаем).
+ * Постоянная 4xx -> пишем в лог и считаем доставленным, чтобы очередь не встала.
+ * Возвращает 'sent' | 'seen' | 'skipped' | 'rejected'.
+ */
+async function sendAccessEvent(device, event, { postJson = postAccessEventJson } = {}) {
   const employeeNo = getAccessEmployeeNo(event);
-  if (!employeeNo) return;
+  if (!employeeNo) return 'skipped';
   const eventUid = getAccessEventUid(device, event);
-  if (accessEventSeen.has(eventUid)) return;
-  accessEventSeen.add(eventUid);
-  trimSeenEvents();
+  if (accessEventSeen.has(eventUid)) return 'seen';
 
   const direction = device.name === 'exit' ? 'exit' : 'entry';
   const name = event.name || event.employeeName || event.userName || '';
@@ -1003,35 +1137,135 @@ async function sendAccessEvent(device, event) {
     raw_event: event,
   };
 
-  const res = await fetch(`${CONFIG.serverUrl}/api/hikvision/access-event`, {
+  let res;
+  try {
+    res = await postJson(payload);
+    if (res.status === 413 && (payload.access_photo_data_url || payload.access_photo_url)) {
+      // Слишком большое фото: само посещение важнее, отправляем без него.
+      const { access_photo_data_url, access_photo_url, ...rest } = payload;
+      res = await postJson({ ...rest, access_photo_error: 'photo too large for server' });
+    }
+  } catch (error) {
+    throw new AccessDeliveryError(`access-event server unreachable: ${humanError(error)}`);
+  }
+
+  if (!res.ok) {
+    if (isRetryableAccessStatus(res.status)) {
+      throw new AccessDeliveryError(`access-event server ${res.status}`, res.status);
+    }
+    console.warn(`[access] Сервер отклонил событие ${eventUid} (${employeeNo}) с кодом ${res.status}; пропускаем.`);
+    accessEventSeen.add(eventUid);
+    trimSeenEvents();
+    return 'rejected';
+  }
+
+  accessEventSeen.add(eventUid);
+  trimSeenEvents();
+  let saved = {};
+  try { saved = await res.json(); } catch { saved = {}; }
+  if (saved?.attendance_created) {
+    console.log(`[access] ${deviceShortLabel(device.name)} ${device.ip}: посещение отмечено ${employeeNo} ${name}`.trim());
+  }
+  return 'sent';
+}
+
+async function postAccessEventJson(payload) {
+  return fetch(`${CONFIG.serverUrl}/api/hikvision/access-event`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-device-key': CONFIG.deviceKey },
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(7000),
   });
-  if (!res.ok) throw new Error(`access-event server ${res.status}`);
-  const saved = await res.json();
-  if (saved.attendance_created) {
-    console.log(`[access] ${deviceShortLabel(device.name)} ${device.ip}: посещение отмечено ${employeeNo} ${name}`.trim());
+}
+
+/**
+ * Разбирает промежуток [cursor - overlap, now] окнами по windowMs по порядку.
+ * Курсор сдвигается (и сохраняется через saveCursor) только после того, как все
+ * события окна приняты. Ошибка в окне останавливает разбор: следующее
+ * срабатывание начнёт с того же окна.
+ */
+async function processAccessWindows({
+  cursor,
+  now,
+  windowMs,
+  overlapMs,
+  maxWindows,
+  query,
+  deliver,
+  saveCursor,
+}) {
+  let current = cursor;
+  let windows = 0;
+  let delivered = 0;
+  while (current < now && windows < maxWindows) {
+    const startedAt = new Date(current.getTime() - overlapMs);
+    const endedAt = new Date(Math.min(current.getTime() + windowMs, now.getTime()));
+    const events = sortAccessEventsByTime(await query(startedAt, endedAt));
+    for (const event of events) {
+      await deliver(event);
+      delivered += 1;
+    }
+    current = endedAt;
+    await saveCursor(current);
+    windows += 1;
+  }
+  return { cursor: current, windows, delivered, caughtUp: current >= now };
+}
+
+function resolveStartCursor(saved, now) {
+  const maxLookback = Math.max(60 * 1000, CONFIG.accessMaxLookbackMs);
+  if (!saved) return new Date(now.getTime() - Math.max(60 * 1000, CONFIG.accessFirstRunLookbackMs));
+  if (saved.getTime() > now.getTime() + 60 * 1000) {
+    console.warn(`[access] Курсор ${saved.toISOString()} в будущем (часы сбились?), начинаем с текущего времени.`);
+    return new Date(now.getTime() - 60 * 1000);
+  }
+  if (now.getTime() - saved.getTime() > maxLookback) {
+    console.warn(`[access] Курсор ${saved.toISOString()} старше ${Math.round(maxLookback / 3600000)} ч, читаем только последние ${Math.round(maxLookback / 3600000)} ч.`);
+    return new Date(now.getTime() - maxLookback);
+  }
+  return saved;
+}
+
+const accessPollInFlight = new Set();
+
+async function pollDeviceAccessEvents(device) {
+  const key = getDeviceKey(device);
+  if (accessPollInFlight.has(key)) return;
+  accessPollInFlight.add(key);
+  try {
+    const probe = await probeDevice(device);
+    if (!probe.ok) return;
+
+    const now = new Date();
+    const cursor = resolveStartCursor(getAccessCursor(accessCursors(), key), now);
+    const lagMs = now.getTime() - cursor.getTime();
+    if (lagMs > 10 * 60 * 1000) {
+      console.log(`[access] ${deviceShortLabel(device.name)} ${device.ip}: дочитываем события с ${cursor.toISOString()} (${Math.round(lagMs / 60000)} мин)`);
+    }
+    const result = await processAccessWindows({
+      cursor,
+      now,
+      windowMs: Math.max(60 * 1000, CONFIG.accessPollWindowMs),
+      overlapMs: 10 * 1000,
+      maxWindows: Math.max(1, CONFIG.accessMaxWindowsPerTick),
+      query: (startedAt, endedAt) => queryAccessEvents(device, startedAt, endedAt),
+      deliver: (event) => sendAccessEvent(device, event),
+      saveCursor: (date) => persistAccessCursor(device, date),
+    });
+    if (lagMs > 10 * 60 * 1000 && result.caughtUp) {
+      console.log(`[access] ${deviceShortLabel(device.name)} ${device.ip}: события дочитаны`);
+    }
+  } catch (error) {
+    // Ни курсор, ни отметки "отправлено" для неотправленных событий не сдвинуты:
+    // следующее срабатывание повторит это окно.
+    console.warn(`[access] ${deviceShortLabel(device.name)} ${device.ip}: повторим позже: ${humanError(error)}`);
+  } finally {
+    accessPollInFlight.delete(key);
   }
 }
 
 async function pollAccessEvents() {
-  const endedAt = new Date();
-  await Promise.allSettled(CONFIG.devices.map(async (device) => {
-    const key = getDeviceKey(device);
-    const previousAt = accessEventPollState.get(key) || new Date(Date.now() - 60 * 1000);
-    const startedAt = new Date(previousAt.getTime() - 10 * 1000);
-
-    const probe = await probeDevice(device);
-    if (!probe.ok) return;
-
-    const events = await queryAccessEvents(device, startedAt, endedAt);
-    for (const event of events) {
-      await sendAccessEvent(device, event);
-    }
-    accessEventPollState.set(key, endedAt);
-  }));
+  await Promise.allSettled(CONFIG.devices.map((device) => pollDeviceAccessEvents(device)));
 }
 
 function parseBackfillDate(value, endOfDay = false) {
@@ -1061,6 +1295,7 @@ async function backfillAccessEvents() {
   for (const device of CONFIG.devices) {
     let sent = 0;
     let windows = 0;
+    let failed = 0;
     const probe = await probeDevice(device);
     if (!probe.ok) {
       console.warn(`[access-backfill] ${deviceShortLabel(device.name)} ${device.ip}: терминал недоступен: ${humanError(probe.message)}`);
@@ -1071,19 +1306,17 @@ async function backfillAccessEvents() {
       const endedAt = new Date(Math.min(startedAt.getTime() + windowMs, to.getTime()));
       windows += 1;
       try {
-        const events = await queryAccessEvents(device, startedAt, endedAt);
+        const events = sortAccessEventsByTime(await queryAccessEvents(device, startedAt, endedAt));
         for (const event of events) {
           await sendAccessEvent(device, event);
           sent += 1;
         }
-        if (events.length >= 40) {
-          console.warn(`[access-backfill] ${deviceShortLabel(device.name)} ${device.ip}: окно ${startedAt.toISOString()} содержит ${events.length} событий, возможно есть ещё.`);
-        }
       } catch (error) {
+        failed += 1;
         console.error(`[access-backfill] ${deviceShortLabel(device.name)} ${device.ip}: ${startedAt.toISOString()}-${endedAt.toISOString()}: ${humanError(error)}`);
       }
     }
-    console.log(`[access-backfill] ${deviceShortLabel(device.name)} ${device.ip}: окон ${windows}, отправлено событий ${sent}`);
+    console.log(`[access-backfill] ${deviceShortLabel(device.name)} ${device.ip}: окон ${windows}, с ошибкой ${failed}, обработано событий ${sent}`);
   }
   console.log('[access-backfill] done');
 }
@@ -2342,7 +2575,23 @@ async function main() {
   }, CONFIG.accessEventPollIntervalMs);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+// KARASU_BRIDGE_NO_MAIN=1 позволяет импортировать файл в тестах без запуска bridge.
+if (process.env.KARASU_BRIDGE_NO_MAIN !== '1') {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
+
+export {
+  loadAccessCursors,
+  saveAccessCursors,
+  getAccessCursor,
+  setAccessCursor,
+  fetchAllAccessEventPages,
+  processAccessWindows,
+  sortAccessEventsByTime,
+  sendAccessEvent,
+  isRetryableAccessStatus,
+  accessEventSeen,
+};
