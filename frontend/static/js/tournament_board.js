@@ -261,7 +261,9 @@
 
     // Первые матчи за места: организатор сам выбирает, кто с кем играет.
     function isPairable(match) {
-        return match.stage === 'placement' && match.round_no === 1 && !match.is_played;
+        if (match.is_played || match.is_bye) return false;
+        if (match.stage === 'group') return Boolean(match.home.entry_id && match.away.entry_id);
+        return match.stage === 'placement' && match.round_no === 1;
     }
 
     function bracketMatchMarkup(match, number) {
@@ -561,9 +563,11 @@
 
     function pairPickerMarkup(match) {
         const data = categoryOverview();
-        // В матчи за места — те, кто не играет в плей-офф.
+        const group = match.stage === 'group';
+        // В группе — команды этой группы; в матчах за места — те, кто не играет в плей-офф.
         const inPlayoff = new Set((data.playoff || []).flatMap((m) => [m.home.entry_id, m.away.entry_id]).filter(Boolean));
-        const teams = (data.entries || []).filter((entry) => !inPlayoff.has(entry.id))
+        const teams = (data.entries || []).filter((entry) => (group
+            ? entry.group_id === match.group_id : !inPlayoff.has(entry.id)))
             .sort((a, b) => a.team_name.localeCompare(b.team_name, 'ru'));
         const select = (side) => `
             <select data-pair="${side}" aria-label="${side === 'home' ? 'Первая команда' : 'Вторая команда'}">
@@ -573,10 +577,12 @@
             </select>`;
         return `
             <div class="sp-pair">
-                <p class="sp-goals-title">Кто играет <small>можно выбрать самим</small></p>
-                <div class="sp-pair-row">${select('home')}<em>—</em>${select('away')}</div>
+                <p class="sp-goals-title">Кто играет <small>${group
+                    ? 'пара поменяется местами с другим матчем группы' : 'можно выбрать самим'}</small></p>
+                <div class="sp-pair-row">${select('home')}<button type="button" class="sp-flip" data-sp-action="flip"
+                    title="Поменять хозяина и гостя">⇄</button>${select('away')}</div>
                 <div class="sp-pair-actions">
-                    <button type="button" class="sp-link" data-sp-action="auto-pairs">Вернуть автоматические пары</button>
+                    ${group ? '<span></span>' : '<button type="button" class="sp-link" data-sp-action="auto-pairs">Вернуть автоматические пары</button>'}
                     <button type="button" class="sp-save" data-sp-action="pair">Сохранить пару</button>
                 </div>
             </div>`;
@@ -588,12 +594,13 @@
         const error = pop.querySelector('.sp-error');
         const value = (side) => pop.querySelector(`[data-pair="${side}"]`).value || null;
         try {
-            await apiJson(`/api/tournament-matches/${match.id}/sides`, {
+            const result = await apiJson(`/api/tournament-matches/${match.id}/sides`, {
                 method: 'PUT',
                 body: JSON.stringify({ home_entry_id: value('home'), away_entry_id: value('away') }),
             });
             closePopover();
             await loadCategory();
+            if (result.warning) showFormError('boardError', `Пара сохранена, но проверьте: ${result.warning}`);
         } catch (requestError) {
             error.hidden = false;
             error.textContent = requestError.message;
@@ -982,6 +989,11 @@
             const action = event.target.closest('[data-sp-action]')?.dataset.spAction;
             if (action === 'save') savePopover();
             if (action === 'pair') savePair();
+            if (action === 'flip') {
+                const home = pop.querySelector('[data-pair="home"]');
+                const away = pop.querySelector('[data-pair="away"]');
+                [home.value, away.value] = [away.value, home.value];
+            }
             if (action === 'auto-pairs') resetPairs();
             if (action === 'clear') savePopover(true);
             if (action === 'protocol') {

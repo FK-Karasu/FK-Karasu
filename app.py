@@ -7723,6 +7723,66 @@ def serialize_protocol(match):
     }
 
 
+def swap_group_pairing(match, data):
+    """Кто с кем играет в групповом матче — без поломки круговой системы.
+
+    Каждая пара в группе встречается заданное число раз, поэтому новую пару
+    не создаём, а меняем матчи местами: выбранная пара переезжает в слот этого
+    матча (тур, время, стадион), а прежняя пара — в слот, где стояла выбранная.
+    Та же пара наоборот — просто меняем хозяина и гостя.
+    """
+    try:
+        home = int(data.get('home_entry_id'))
+        away = int(data.get('away_entry_id'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Выберите обе команды'}), 400
+    if home == away:
+        return jsonify({'success': False, 'message': 'Команда не может играть сама с собой'}), 400
+    members = {e.id for e in TournamentEntry.query.filter_by(group_id=match.group_id).all()}
+    if home not in members or away not in members:
+        return jsonify({'success': False, 'message': 'Обе команды должны быть из этой группы'}), 400
+
+    if {home, away} == {match.home_entry_id, match.away_entry_id}:
+        match.home_entry_id, match.away_entry_id = home, away
+        db.session.commit()
+        return jsonify({'success': True, 'match': serialize_match(match), 'warning': None})
+
+    group_matches = TournamentMatch.query.filter_by(group_id=match.group_id, stage=TournamentMatch.STAGE_GROUP).all()
+    candidates = [m for m in group_matches if m.id != match.id
+                  and {m.home_entry_id, m.away_entry_id} == {home, away}]
+    target = next((m for m in candidates if not m.is_played), None)
+    if not target:
+        if candidates:
+            return jsonify({'success': False, 'message': 'Эти команды уже сыграли между собой'}), 409
+        return jsonify({'success': False, 'message': 'Такой пары нет в календаре группы'}), 400
+
+    old_pair = (match.home_entry_id, match.away_entry_id)
+    for item in (match, target):
+        TournamentMatchAppearance.query.filter_by(match_id=item.id).delete(synchronize_session=False)
+        TournamentMatchEvent.query.filter_by(match_id=item.id).delete(synchronize_session=False)
+    match.home_entry_id, match.away_entry_id = home, away
+    target.home_entry_id, target.away_entry_id = old_pair
+    db.session.flush()
+
+    # Команда не должна оказаться в двух матчах одного тура или в одно время.
+    warnings = []
+    for item in (match, target):
+        for other in group_matches:
+            if other.id == item.id:
+                continue
+            shared = {item.home_entry_id, item.away_entry_id} & {other.home_entry_id, other.away_entry_id}
+            if not shared:
+                continue
+            names = ', '.join(sorted(db.session.get(TournamentEntry, e).team.name for e in shared))
+            if item.kickoff_at and other.kickoff_at == item.kickoff_at:
+                warnings.append(f'{names} — два матча в одно время')
+            elif item.round_no == other.round_no:
+                warnings.append(f'{names} — два матча в туре {item.round_no}')
+    db.session.commit()
+    return jsonify({'success': True, 'match': serialize_match(match),
+                    'warning': '; '.join(sorted(set(warnings))) or None})
+
+
 @app.route('/api/tournament-matches/<int:match_id>/sides', methods=['PUT'])
 @login_required
 def tournament_match_sides_api(match_id):
@@ -7738,10 +7798,12 @@ def tournament_match_sides_api(match_id):
     match = db.session.get(TournamentMatch, match_id)
     if not match:
         return jsonify({'success': False, 'message': 'Матч не найден'}), 404
-    if match.stage != TournamentMatch.STAGE_PLACEMENT or match.round_no != 1:
-        return jsonify({'success': False, 'message': 'Пары выбираются только в первых матчах за места'}), 400
     if match.is_played:
         return jsonify({'success': False, 'message': 'Матч уже сыгран — сначала очистите счёт'}), 409
+    if match.stage == TournamentMatch.STAGE_GROUP:
+        return swap_group_pairing(match, request.get_json() or {})
+    if match.stage != TournamentMatch.STAGE_PLACEMENT or match.round_no != 1:
+        return jsonify({'success': False, 'message': 'Пары выбираются только в группах и первых матчах за места'}), 400
 
     data = request.get_json() or {}
     entries = {e.id: e for e in confirmed_entries(match.tournament_id, match.age_group)}

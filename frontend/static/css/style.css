@@ -18010,3 +18010,19 @@ table.stat-table tr.stat-muted td { opacity: .5; }
 @media (max-width: 900px) {
     #tournamentEntriesModal .entry-pool-add { opacity: 1; }
 }
+
+#scorePopover .sp-flip {
+    width: 34px !important;
+    min-width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 !important;
+    border: 1px solid #e4e0dc !important;
+    border-radius: 50% !important;
+    background: #fff !important;
+    color: #b45f09 !important;
+    box-shadow: none !important;
+    font-size: 15px !important;
+    font-weight: 800 !important;
+}
+#scorePopover .sp-flip:hover { background: #fff7ed !important; border-color: #ffb066 !important; }
