@@ -17780,3 +17780,26 @@ table.stat-table tr.stat-muted td { opacity: .5; }
     #tournamentEntriesModal .cal-row { grid-template-columns: 48px minmax(0, 1fr) 56px minmax(0, 1fr); }
     .cal-stage { display: none; }
 }
+
+/* Галочки категорий в строке заявки: общее правило для полей (высота 42px) их растягивало. */
+#tournamentEntriesModal .entry-add-row input[type="checkbox"],
+#tournamentEntriesModal .entry-age-chips input[type="checkbox"] {
+    width: 18px !important;
+    min-width: 18px !important;
+    max-width: 18px !important;
+    height: 18px !important;
+    min-height: 18px !important;
+    max-height: 18px !important;
+    flex: 0 0 18px;
+    border-radius: 5px !important;
+}
+
+#tournamentEntriesModal .entry-age-chips input[type="checkbox"]::after {
+    left: 5px;
+    top: 1.5px;
+}
+
+#tournamentEntriesModal .age-pick {
+    height: 38px;
+    padding: 0 14px 0 10px;
+}
