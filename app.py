@@ -6041,7 +6041,12 @@ def tournament_rules(tournament):
                   if key != '_rules' and isinstance(value, dict)]
         tiebreak = next((value for value in legacy if value in TIEBREAK_TITLES),
                         tournament_engine.TIEBREAK_H2H)
-    return {'allow_play_up': bool(rules.get('allow_play_up')), 'tiebreak': tiebreak}
+    try:
+        match_minutes = max(5, min(240, int(rules.get('match_minutes') or 30)))
+    except (TypeError, ValueError):
+        match_minutes = 30
+    return {'allow_play_up': bool(rules.get('allow_play_up')), 'tiebreak': tiebreak,
+            'match_minutes': match_minutes}
 
 
 def save_tournament_rules(tournament, rules):
@@ -6055,6 +6060,7 @@ def save_tournament_rules(tournament, rules):
     merged = {
         'allow_play_up': bool(rules.get('allow_play_up', current['allow_play_up'])),
         'tiebreak': rules.get('tiebreak') if rules.get('tiebreak') in TIEBREAK_TITLES else current['tiebreak'],
+        'match_minutes': rules.get('match_minutes') or current['match_minutes'],
     }
     data['_rules'] = merged
     tournament.formats = json.dumps(data, ensure_ascii=False)
@@ -7529,6 +7535,7 @@ def tournament_schedule_api(tournament_id):
         db.session.rollback()
         return jsonify({'success': False, 'message': str(error)}), 400
 
+    save_tournament_rules(tournament, {'match_minutes': duration})
     days = set()
     # Номер поля: матчи в одно время раскладываются по полям 1, 2, 3… — занятые
     # уже стоящими матчами номера пропускаем.
@@ -7563,6 +7570,53 @@ def protocol_goal_count(match):
         match_id=match.id, kind=TournamentMatchEvent.KIND_GOAL).all()
     home = sum(1 for e in goals if e.entry_id == match.home_entry_id)
     return home, len(goals) - home, len(goals)
+
+
+def match_slot_conflict(match):
+    """Не даём поставить два матча на одно поле в одно время и одну команду — в два матча сразу.
+
+    Время пересечения — длительность матча из «Расставить по времени» (по умолчанию 30 мин).
+    Стадион общий для всех турниров, поэтому смотрим матчи всех турниров.
+    Разные номера поля одного стадиона — можно; если у одного из матчей поле не
+    указано, считаем это одним полем.
+    """
+    if not match.kickoff_at:
+        return None
+    tournament = db.session.get(Tournament, match.tournament_id)
+    length = timedelta(minutes=tournament_rules(tournament)['match_minutes'])
+    start, end = match.kickoff_at - length, match.kickoff_at + length
+    nearby = TournamentMatch.query.filter(
+        TournamentMatch.id != match.id,
+        TournamentMatch.kickoff_at.isnot(None),
+        TournamentMatch.kickoff_at > start,
+        TournamentMatch.kickoff_at < end,
+    ).all()
+
+    def title(item):
+        def name(entry, label):
+            return entry.team.name if entry and entry.team else (label or '?')
+        return f'{name(item.home_entry, item.home_label)} — {name(item.away_entry, item.away_label)}'
+
+    teams = {match.home_entry_id, match.away_entry_id} - {None}
+    for other in nearby:
+        time = other.kickoff_at.strftime('%d.%m %H:%M')
+        if teams & ({other.home_entry_id, other.away_entry_id} - {None}):
+            return f'В {time} у этой команды уже матч «{title(other)}» — поставьте другое время.'
+        if match.stadium_id and other.stadium_id == match.stadium_id:
+            if match.pitch and other.pitch and match.pitch != other.pitch:
+                continue
+            place = match.stadium.name if match.stadium else 'стадионе'
+            pitch = f', поле {other.pitch}' if other.pitch else ''
+            if match.pitch and other.pitch:
+                hint = ' Выберите другое поле или время.'
+            elif other.pitch:
+                hint = f' Укажите у этого матча другое поле (не {other.pitch}) или другое время.'
+            else:
+                hint = ' Укажите номер поля у обоих матчей или выберите другое время.'
+            other_tournament = '' if other.tournament_id == match.tournament_id else (
+                f' (турнир «{other.tournament.name}»)' if other.tournament else '')
+            return f'На {place}{pitch} в {time} уже идёт «{title(other)}»{other_tournament}.{hint}'
+    return None
 
 
 @app.route('/api/tournament-matches/<int:match_id>', methods=['PUT'])
@@ -7649,6 +7703,11 @@ def tournament_match_detail_api(match_id):
                 match.kickoff_at = datetime.fromisoformat(value)
             except ValueError:
                 return jsonify({'success': False, 'message': 'Некорректные дата и время'}), 400
+
+    conflict = match_slot_conflict(match)
+    if conflict:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': conflict}), 409
 
     try:
         if match.stage in (TournamentMatch.STAGE_PLAYOFF, TournamentMatch.STAGE_PLACEMENT):
