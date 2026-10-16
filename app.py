@@ -1763,6 +1763,7 @@ def ensure_tournament_tables():
             ('loser_next_match_id', 'INTEGER'),
             ('loser_next_slot', 'VARCHAR(8)'),
             ('home_seed', 'VARCHAR(40)'),
+            ('pitch', 'INTEGER'),
             ('away_seed', 'VARCHAR(40)'),
         ):
             if column_name not in fixture_columns:
@@ -6511,6 +6512,7 @@ def serialize_match(match):
         'loser_next_match_id': match.loser_next_match_id,
         'stadium_id': match.stadium_id,
         'stadium_name': match.stadium.name if match.stadium else None,
+        'pitch': match.pitch,
         'kickoff_at': match.kickoff_at.isoformat(timespec='minutes') if match.kickoff_at else None,
     }
 
@@ -7528,10 +7530,22 @@ def tournament_schedule_api(tournament_id):
         return jsonify({'success': False, 'message': str(error)}), 400
 
     days = set()
+    # Номер поля: матчи в одно время раскладываются по полям 1, 2, 3… — занятые
+    # уже стоящими матчами номера пропускаем.
+    taken = {}
+    for match in fixed:
+        if match.pitch:
+            taken.setdefault(match.kickoff_at, set()).add(match.pitch)
     for match in pending:
         match.kickoff_at = placed[match.id]
         if stadium_id:
             match.stadium_id = stadium_id
+        used = taken.setdefault(match.kickoff_at, set())
+        if pitches > 1:
+            match.pitch = next(n for n in range(1, pitches + 2) if n not in used)
+            used.add(match.pitch)
+        else:
+            match.pitch = None
         days.add(match.kickoff_at.date())
 
     db.session.commit()
@@ -7616,6 +7630,15 @@ def tournament_match_detail_api(match_id):
         if stadium_id and not db.session.get(TournamentStadium, stadium_id):
             return jsonify({'success': False, 'message': 'Стадион не найден'}), 400
         match.stadium_id = stadium_id
+
+    if 'pitch' in data:
+        try:
+            pitch = int(data.get('pitch')) if data.get('pitch') not in (None, '') else None
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Номер поля — от 1 до 4'}), 400
+        if pitch is not None and not 1 <= pitch <= 4:
+            return jsonify({'success': False, 'message': 'Номер поля — от 1 до 4'}), 400
+        match.pitch = pitch
 
     if 'kickoff_at' in data:
         value = (data.get('kickoff_at') or '').strip()
@@ -8483,6 +8506,7 @@ def public_tournament_detail_api(tournament_id):
             'is_bye': data['is_bye'],
             'kickoff_at': data['kickoff_at'],
             'stadium_name': data['stadium_name'],
+            'pitch': data['pitch'],
         }
 
     categories = []

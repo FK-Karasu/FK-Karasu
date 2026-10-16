@@ -954,6 +954,8 @@ class TournamentMatch(db.Model):
     home_entry_id = db.Column(db.Integer, db.ForeignKey('tournament_entries.id'), nullable=True)
     away_entry_id = db.Column(db.Integer, db.ForeignKey('tournament_entries.id'), nullable=True)
     stadium_id = db.Column(db.Integer, db.ForeignKey('tournament_stadiums.id'), nullable=True)
+    # Часть стадиона (поле 1–4), чтобы команды знали, куда идти.
+    pitch = db.Column(db.Integer, nullable=True)
     kickoff_at = db.Column(db.DateTime, nullable=True)
     home_score = db.Column(db.Integer, nullable=True)
     away_score = db.Column(db.Integer, nullable=True)

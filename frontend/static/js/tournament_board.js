@@ -289,7 +289,7 @@
         return `
             <button type="button" class="bk-match${match.is_played ? ' played' : ''}${ready || isPairable(match) ? ' ready' : ''}"
                 data-board-match="${match.id}" ${ready || isPairable(match) ? '' : 'disabled'}>
-                <span class="bk-no">${number}${match.kickoff_at ? ` · ${escapeHtml(formatKickoff(match.kickoff_at))}` : ''}</span>
+                <span class="bk-no">${number}${match.kickoff_at ? ` · ${escapeHtml(formatKickoff(match.kickoff_at))}` : ''}${match.pitch ? ` · поле ${match.pitch}` : ''}</span>
                 ${row('home', match.home_score, match.home_penalty)}
                 ${row('away', match.away_score, match.away_penalty)}
             </button>`;
@@ -440,8 +440,8 @@
             <button type="button" class="cal-row${match.is_played ? ' played' : ''}" data-board-match="${match.id}"
                 ${ready || isPairable(match) ? '' : 'disabled'}>
                 <span class="cal-time">${time}</span>
-                <span class="cal-stage">${escapeHtml(stageLabel(match))}${match.stadium_name
-                    ? `<small>${escapeHtml(match.stadium_name)}</small>` : ''}</span>
+                <span class="cal-stage">${escapeHtml(stageLabel(match))}${match.stadium_name || match.pitch
+                    ? `<small>${escapeHtml([match.stadium_name, match.pitch ? `Поле ${match.pitch}` : ''].filter(Boolean).join(' · '))}</small>` : ''}</span>
                 ${team('home', 'home')}
                 <span class="cal-score">${match.is_played ? `${match.home_score}:${match.away_score}` : 'vs'}${pens}</span>
                 ${team('away', 'away')}
@@ -541,6 +541,10 @@
                     <option value="">Стадион не выбран</option>
                     ${(categoryOverview()?.stadiums || []).map((stadium) => `<option value="${stadium.id}"
                         ${match.stadium_id === stadium.id ? 'selected' : ''}>${escapeHtml(stadium.name)}</option>`).join('')}
+                </select>
+                <select data-sp="pitch" aria-label="Поле">
+                    <option value="">Поле —</option>
+                    ${[1, 2, 3, 4].map((n) => `<option value="${n}" ${match.pitch === n ? 'selected' : ''}>Поле ${n}</option>`).join('')}
                 </select>
             </div>
             <div class="sp-goals" data-sp-goals><p class="sp-hint">Загружаем состав…</p></div>
@@ -796,6 +800,7 @@
         // Время и стадион матча правятся здесь же (раньше — в строках матчей).
         payload.kickoff_at = pop.querySelector('[data-sp="kickoff"]').value;
         payload.stadium_id = pop.querySelector('[data-sp="stadium"]').value || null;
+        payload.pitch = pop.querySelector('[data-sp="pitch"]').value || null;
         if (match.stage === 'playoff') {
             payload.home_penalty = read('hpen');
             payload.away_penalty = read('apen');

@@ -943,7 +943,7 @@
         function fixtureMarkup(match) {
             const when = [
                 match.kickoff_at ? formatKickoff(match.kickoff_at) : '',
-                match.stadium_name || '',
+                [match.stadium_name, match.pitch ? `поле ${match.pitch}` : ''].filter(Boolean).join(' · '),
             ].filter(Boolean).join(' · ');
             const shootout = match.is_played && match.home_score === match.away_score
                 && match.home_penalty !== null && match.home_penalty !== undefined;
