@@ -40,3 +40,6 @@ Thumbs.db
 
 # Переменные окружения
 .env
+
+# Фото, загруженные в конструкторе event-страницы (живут на томе Railway)
+frontend/static/uploads/event_*
