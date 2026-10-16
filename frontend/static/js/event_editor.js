@@ -265,7 +265,25 @@
 
     /* --- Панель и события --- */
 
+    function adminBackUrl(fallback) {
+        // Возвращаемся туда, откуда пришли в админке; со страницы гостя или по прямой ссылке — на главную.
+        try {
+            const from = new URL(document.referrer);
+            if (from.origin === window.location.origin && !from.pathname.startsWith('/event')) return from.href;
+        } catch (error) { /* нет referrer */ }
+        return fallback;
+    }
+
+    async function goBack(event) {
+        event.preventDefault();
+        const target = adminBackUrl(event.currentTarget.href);
+        if (dirty) await saveDraft();
+        dirty = false;
+        window.location.href = target;
+    }
+
     function bindToolbar() {
+        document.getElementById('edBack').addEventListener('click', goBack);
         document.getElementById('edPublish').addEventListener('click', publish);
         document.getElementById('edDiscard').addEventListener('click', discard);
         document.getElementById('edOpenSettings').addEventListener('click', openSettings);

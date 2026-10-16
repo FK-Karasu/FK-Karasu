@@ -853,6 +853,7 @@
 <body{% if edit_mode %} class="edit-mode" data-has-changes="{{ '1' if has_changes else '0' }}"{% endif %}>
     {% if edit_mode %}
         <div class="ed-toolbar">
+            <a class="ed-btn ghost ed-back" id="edBack" href="{{ url_for('dashboard') }}" title="Вернуться в админку">← <span>В админку</span></a>
             <strong>Конструктор страницы</strong>
             <span class="ed-status" id="edStatus"></span>
             <button type="button" class="ed-btn ghost" id="edOpenSettings">⚙ <span>Настройки</span></button>
@@ -1154,9 +1155,9 @@
         })();
     </script>
 {% if edit_mode %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/event_editor.css') }}?v=2026101701">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/event_editor.css') }}?v=2026101702">
     <script type="application/json" id="eventContent">{{ page | tojson }}</script>
-    <script src="{{ url_for('static', filename='js/event_editor.js') }}?v=2026101701"></script>
+    <script src="{{ url_for('static', filename='js/event_editor.js') }}?v=2026101702"></script>
 {% endif %}
 </body>
 </html>

@@ -222,3 +222,8 @@ li.ed-item .ed-remove { position: static; width: 20px; height: 20px; margin-left
     .ed-toolbar strong { display: none; }
     .ed-toolbar .ed-btn.ghost span { display: none; }
 }
+
+.ed-toolbar .ed-back { padding: 0 14px; }
+@media (max-width: 760px) {
+    .ed-toolbar .ed-back span { display: none; }
+}
