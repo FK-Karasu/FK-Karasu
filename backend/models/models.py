@@ -1148,6 +1148,22 @@ class TournamentStadium(db.Model):
         return f'<TournamentStadium {self.name}>'
 
 
+class EventPage(db.Model):
+    """Контент презентационной страницы event.karasu.uz.
+
+    draft — то, что видно в конструкторе; published — то, что видят гости.
+    Пока записи нет, страница берёт контент из backend/data/event_page.json.
+    """
+    __tablename__ = 'event_page'
+
+    id = db.Column(db.Integer, primary_key=True)
+    draft = db.Column(db.Text, nullable=True)
+    published = db.Column(db.Text, nullable=True)
+    published_at = db.Column(db.DateTime, nullable=True)
+    updated_at = db.Column(db.DateTime, default=get_local_datetime, onupdate=get_local_datetime)
+    updated_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+
 class CashTransfer(db.Model):
     """Передача денег из кассы управляющему"""
     __tablename__ = 'cash_transfers'

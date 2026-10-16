@@ -73,7 +73,7 @@ os.environ['FFMPEG_LOG_LEVEL'] = 'quiet'
 # Форсируем использование CUDA/TensorRT в ONNX
 os.environ['ORT_TENSORRT_FP16_ENABLE'] = '1'
 
-from backend.models.models import db, User, Student, Payment, Attendance, AccessLog, Expense, Group, GroupTrainer, Tariff, ClubSettings, RewardType, StudentReward, CashTransfer, Role, RolePermission, CardType, StudentCard, Tournament, TournamentTeamCatalog, TournamentTeamMember, TournamentStadium, TournamentTeamShareLink, TournamentEntry, TournamentGroup, TournamentMatch, TournamentMatchAppearance, TournamentMatchEvent, TournamentAward, TournamentEntryPlayer, DeviceCommand, BridgeStatus, TerminalFaceState, StudentLog
+from backend.models.models import db, User, Student, Payment, Attendance, AccessLog, Expense, Group, GroupTrainer, Tariff, ClubSettings, RewardType, StudentReward, CashTransfer, Role, RolePermission, CardType, StudentCard, Tournament, TournamentTeamCatalog, TournamentTeamMember, TournamentStadium, TournamentTeamShareLink, TournamentEntry, TournamentGroup, TournamentMatch, TournamentMatchAppearance, TournamentMatchEvent, TournamentAward, TournamentEntryPlayer, EventPage, DeviceCommand, BridgeStatus, TerminalFaceState, StudentLog
 # Live camera recognition stays disabled; access-log verification is separate.
 USE_FACE = False
 from backend.services.face_stub import DummyFaceService as FaceService
@@ -2857,13 +2857,42 @@ EVENT_HOST_PREFIX = 'event.'
 _event_page_cache = {'mtime': None, 'data': None}
 
 
-def load_event_page():
+def default_event_page():
     mtime = os.path.getmtime(EVENT_PAGE_PATH)
     if _event_page_cache['mtime'] != mtime:
         with open(EVENT_PAGE_PATH, encoding='utf-8') as handle:
             _event_page_cache['data'] = json.load(handle)
         _event_page_cache['mtime'] = mtime
-    return _event_page_cache['data']
+    return json.loads(json.dumps(_event_page_cache['data']))
+
+
+def event_page_row(create=False):
+    try:
+        EventPage.__table__.create(db.engine, checkfirst=True)
+    except Exception as error:
+        print(f'Таблица event_page: {error}')
+    row = EventPage.query.first()
+    if not row and create:
+        content = json.dumps(default_event_page(), ensure_ascii=False)
+        row = EventPage(draft=content, published=content)
+        db.session.add(row)
+        db.session.flush()
+    return row
+
+
+def load_event_page(draft=False):
+    """Опубликованный контент (или черновик для конструктора); без записи — файл по умолчанию."""
+    try:
+        row = event_page_row()
+    except Exception:
+        row = None
+    raw = (row.draft if draft else row.published) if row else None
+    if raw:
+        try:
+            return json.loads(raw)
+        except Exception:
+            pass
+    return default_event_page()
 
 
 def is_event_host():
@@ -2909,7 +2938,7 @@ def event_tournament_cards(limit=6):
     return cards
 
 
-def render_event_page():
+def render_event_page(edit_mode=False):
     try:
         tournaments = event_tournament_cards()
     except Exception as error:
@@ -2917,11 +2946,105 @@ def render_event_page():
         tournaments = []
     return render_template(
         'event.html',
-        page=load_event_page(),
+        page=load_event_page(draft=edit_mode),
         tournaments=tournaments,
         main_site_url=main_site_url(),
         year=get_local_date().year,
+        edit_mode=edit_mode,
+        has_changes=edit_mode and event_has_changes(),
     )
+
+
+def event_has_changes():
+    row = event_page_row()
+    return bool(row and row.draft != row.published)
+
+
+def can_edit_event_page():
+    return current_user.is_authenticated and (
+        current_user.role == 'admin' or current_user.has_permission('settings', 'edit'))
+
+
+def validate_event_content(content):
+    """Минимальная проверка структуры: всё, что читает шаблон, должно быть на месте."""
+    if not isinstance(content, dict):
+        raise ValueError('Неверный формат страницы')
+    base = default_event_page()
+    for key, value in base.items():
+        if key not in content or type(content[key]) is not type(value):
+            content[key] = value
+    for variant in content['stay'].get('variants', []):
+        variant.setdefault('features', [])
+        variant.setdefault('photos', [])
+    text = json.dumps(content, ensure_ascii=False)
+    if len(text) > 400_000:
+        raise ValueError('Слишком много текста на странице')
+    return content
+
+
+@app.route('/event/editor')
+@login_required
+def event_page_editor():
+    if not can_edit_event_page():
+        return redirect(url_for('dashboard'))
+    event_page_row(create=True)
+    db.session.commit()
+    return render_event_page(edit_mode=True)
+
+
+@app.route('/api/event-page', methods=['GET', 'PUT'])
+@login_required
+def event_page_api():
+    """GET — черновик; PUT {content, publish} — сохранить черновик и, если надо, опубликовать."""
+    if not can_edit_event_page():
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    row = event_page_row(create=True)
+    if request.method == 'GET':
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'content': json.loads(row.draft),
+            'has_changes': row.draft != row.published,
+            'published_at': row.published_at.isoformat() if row.published_at else None,
+        })
+    data = request.get_json() or {}
+    if data.get('discard'):
+        row.draft = row.published
+        db.session.commit()
+        return jsonify({'success': True})
+    try:
+        content = validate_event_content(data.get('content'))
+    except ValueError as error:
+        return jsonify({'success': False, 'message': str(error)}), 400
+    row.draft = json.dumps(content, ensure_ascii=False)
+    row.updated_by = current_user.id
+    if data.get('publish'):
+        row.published = row.draft
+        row.published_at = get_local_datetime()
+    db.session.commit()
+    return jsonify({'success': True, 'published': bool(data.get('publish')),
+                    'has_changes': row.draft != row.published})
+
+
+@app.route('/api/event-page/upload', methods=['POST'])
+@login_required
+def event_page_upload():
+    """Фото для страницы: сжимаем в webp и кладём в uploads (том Railway — переживает выкладки)."""
+    if not can_edit_event_page():
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    file = request.files.get('image')
+    if not file:
+        return jsonify({'success': False, 'message': 'Файл не выбран'}), 400
+    try:
+        image = Image.open(file.stream)
+        image = ImageOps.exif_transpose(image).convert('RGB')
+    except Exception:
+        return jsonify({'success': False, 'message': 'Это не картинка'}), 400
+    image.thumbnail((1800, 1800), Image.LANCZOS)
+    name = f'event_{uuid.uuid4().hex[:12]}.webp'
+    image.save(os.path.join(app.config['UPLOAD_FOLDER'], name), 'WEBP', quality=82, method=6)
+    return jsonify({'success': True, 'path': f'uploads/{name}',
+                    'url': url_for('static', filename=f'uploads/{name}')})
 
 
 @app.route('/event')

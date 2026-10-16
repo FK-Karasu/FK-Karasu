@@ -113,6 +113,19 @@
             <span>Турниры</span>
         </a>
         {% endif %}
+        {% if current_user.role == 'admin' or current_user.has_permission('settings', 'edit') %}
+        <a href="{{ url_for('event_page_editor') }}" {% if request.endpoint=='event_page_editor' %}class="active"
+            {% endif %} data-tooltip="Сайт KARASU EVENT">
+            <svg xmlns="http://www.w3.org/2000/svg" class="sidebar-icon lucide lucide-layout-template" width="24"
+                height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect width="18" height="7" x="3" y="3" rx="1" />
+                <rect width="9" height="7" x="3" y="14" rx="1" />
+                <rect width="5" height="7" x="16" y="14" rx="1" />
+            </svg>
+            <span>Сайт EVENT</span>
+        </a>
+        {% endif %}
 
         {% if current_user.has_permission('camera', 'view') %}
         <a href="{{ url_for('camera_page') }}" {% if request.endpoint=='camera_page' %}class="active" {% endif %}

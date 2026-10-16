@@ -12,6 +12,7 @@
     <link rel="icon" href="{{ system_square_logo_url or url_for('static', filename='uploads/favicon.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <style>
+        {% if page.theme and page.theme.accent %}:root { --accent-custom: {{ page.theme.accent }}; }{% endif %}
         @font-face {
             font-family: 'Unbounded';
             src: url("{{ url_for('static', filename='vendor/onest-ttf/Unbounded.ttf') }}") format('truetype');
@@ -25,7 +26,7 @@
             --line: rgba(255, 255, 255, .1);
             --text: #ffffff;
             --muted: #a3a3ad;
-            --accent: #ff8a00;
+            --accent: var(--accent-custom, #ff8a00);
             --accent-ink: #1a0f00;
             --radius: 22px;
             --display: 'Unbounded', 'Onest', system-ui, sans-serif;
@@ -849,7 +850,23 @@
         }
     </style>
 </head>
-<body>
+<body{% if edit_mode %} class="edit-mode" data-has-changes="{{ '1' if has_changes else '0' }}"{% endif %}>
+    {% if edit_mode %}
+        <div class="ed-toolbar">
+            <strong>Конструктор страницы</strong>
+            <span class="ed-status" id="edStatus"></span>
+            <button type="button" class="ed-btn ghost" id="edOpenSettings">⚙ <span>Настройки</span></button>
+            <a class="ed-btn ghost" href="/event" target="_blank" rel="noopener">👁 <span>Как видят гости</span></a>
+            <button type="button" class="ed-btn ghost" id="edDiscard">↺ <span>Отменить правки</span></button>
+            <button type="button" class="ed-btn" id="edPublish">Опубликовать</button>
+        </div>
+        <div class="ed-settings" id="edSettings" hidden></div>
+    {% endif %}
+    {# Отметки для конструктора: в обычном режиме ничего не выводят. #}
+    {% macro e(path) %}{% if edit_mode %} data-edit="{{ path }}"{% endif %}{% endmacro %}
+    {% macro img(path) %}{% if edit_mode %} data-edit-img="{{ path }}"{% endif %}{% endmacro %}
+    {% macro rm(list_path, index) %}{% if edit_mode %}<button type="button" class="ed-remove" data-ed-remove="{{ list_path }}" data-index="{{ index }}" title="Убрать">✕</button>{% endif %}{% endmacro %}
+    {% macro add(list_path, kind, label) %}{% if edit_mode %}<button type="button" class="ed-add" data-ed-add="{{ list_path }}" data-kind="{{ kind }}">+ {{ label }}</button>{% endif %}{% endmacro %}
     {% set arcs %}
         <svg class="arcs" viewBox="0 0 400 400" aria-hidden="true">
             {% for r in [190, 170, 150, 130, 110, 90] %}<circle cx="200" cy="200" r="{{ r }}"></circle>{% endfor %}
@@ -886,24 +903,26 @@
     <main id="top">
         <section class="hero">
             <div class="hero-media">
-                <img src="{{ url_for('static', filename=page.hero.image) }}" alt="" fetchpriority="high">
+                <img src="{{ url_for('static', filename=page.hero.image) }}" alt="" fetchpriority="high"{{ img('hero.image') }}>
             </div>
             {{ arcs }}
+            {% if edit_mode %}<button type="button" class="ed-btn ghost ed-hero-photo" data-edit-img="hero.image">🖼 Фон первого экрана</button>{% endif %}
             <div class="wrap hero-inner">
-                <p class="eyebrow">{{ page.hero.eyebrow }}</p>
+                <p class="eyebrow"{{ e('hero.eyebrow') }}>{{ page.hero.eyebrow }}</p>
                 <h1 class="display">
-                    {% for line in page.hero.title_lines %}<span class="line">{{ line }}</span>{% endfor %}
-                    <span class="accent">{{ page.hero.accent }}</span>
+                    {% for line in page.hero.title_lines %}<span class="line"{{ e('hero.title_lines.' ~ loop.index0) }}>{{ line }}</span>{% endfor %}
+                    <span class="accent"{{ e('hero.accent') }}>{{ page.hero.accent }}</span>
                 </h1>
-                <p class="hero-lead">{{ page.hero.lead }}</p>
+                <p class="hero-lead"{{ e('hero.lead') }}>{{ page.hero.lead }}</p>
                 <div class="hero-actions">
-                    <a class="btn btn-accent" href="#stay">{{ page.hero.cta_primary }} →</a>
-                    <a class="btn btn-ghost" href="#tournaments">{{ page.hero.cta_secondary }}</a>
+                    <a class="btn btn-accent" href="#stay"><span{{ e('hero.cta_primary') }}>{{ page.hero.cta_primary }}</span> →</a>
+                    <a class="btn btn-ghost" href="#tournaments"><span{{ e('hero.cta_secondary') }}>{{ page.hero.cta_secondary }}</span></a>
                 </div>
                 <div class="stats">
                     {% for stat in page.hero.stats %}
-                        <div class="stat"><b>{{ stat.value }}</b><span>{{ stat.label }}</span></div>
+                        <div class="stat ed-item"><b{{ e('hero.stats.' ~ loop.index0 ~ '.value') }}>{{ stat.value }}</b><span{{ e('hero.stats.' ~ loop.index0 ~ '.label') }}>{{ stat.label }}</span>{{ rm('hero.stats', loop.index0) }}</div>
                     {% endfor %}
+                    {{ add('hero.stats', 'stat', 'цифра') }}
                 </div>
             </div>
         </section>
@@ -911,7 +930,7 @@
         <div class="marquee-clip" aria-hidden="true">
             <div class="marquee">
                 <div class="marquee-track">
-                    {% for _ in range(2) %}{% for word in page.marquee %}<span>{{ word }}</span>{% endfor %}{% endfor %}
+                    {% for _ in range(1 if edit_mode else 2) %}{% for word in page.marquee %}<span class="ed-item"{{ e('marquee.' ~ loop.index0) }}>{{ word }}</span>{% endfor %}{% endfor %}
                 </div>
             </div>
         </div>
@@ -920,33 +939,41 @@
             <div class="wrap">
                 <div class="section-head reveal">
                     <div>
-                        <p class="eyebrow">{{ page.stay.eyebrow }}</p>
-                        <h2 class="title">{{ page.stay.title }}</h2>
+                        <p class="eyebrow"{{ e('stay.eyebrow') }}>{{ page.stay.eyebrow }}</p>
+                        <h2 class="title"{{ e('stay.title') }}>{{ page.stay.title }}</h2>
                     </div>
-                    <p class="subtitle">{{ page.stay.subtitle }}</p>
+                    <p class="subtitle"{{ e('stay.subtitle') }}>{{ page.stay.subtitle }}</p>
                 </div>
                 <div class="stay-list">
                     {% for variant in page.stay.variants %}
-                        <article class="stay reveal">
+                        {% set vp = 'stay.variants.' ~ loop.index0 %}
+                        <article class="stay reveal ed-item">
+                            {{ rm('stay.variants', loop.index0) }}
                             <div class="stay-info">
                                 <div class="stay-top">
                                     <span class="stay-no">{{ loop.index }}</span>
-                                    {% if variant.tag %}<span class="stay-tag">{{ variant.tag }}</span>{% endif %}
+                                    {% if variant.tag or edit_mode %}<span class="stay-tag"{{ e(vp ~ '.tag') }}>{{ variant.tag }}</span>{% endif %}
                                 </div>
-                                <h3>{{ variant.name }}</h3>
-                                <ul>{% for feature in variant.features %}<li>{{ feature }}</li>{% endfor %}</ul>
-                                <div class="price"><b>{{ variant.price }}</b><span>/ {{ variant.unit }}</span></div>
+                                <h3{{ e(vp ~ '.name') }}>{{ variant.name }}</h3>
+                                <ul>{% for feature in variant.features %}<li class="ed-item"><span{{ e(vp ~ '.features.' ~ loop.index0) }}>{{ feature }}</span>{{ rm(vp ~ '.features', loop.index0) }}</li>{% endfor %}</ul>
+                                {{ add(vp ~ '.features', 'text', 'пункт') }}
+                                <div class="price"><b{{ e(vp ~ '.price') }}>{{ variant.price }}</b><span>/ <span{{ e(vp ~ '.unit') }}>{{ variant.unit }}</span></span></div>
                             </div>
                             <div class="stay-photos">
-                                {% for photo in variant.photos[:3] %}
-                                    <button class="photo" type="button" data-zoom="{{ url_for('static', filename=photo) }}"
+                                {% for index in range(3) %}
+                                    {% set photo = variant.photos[index] if variant.photos|length > index else '' %}
+                                    {% if photo or edit_mode %}
+                                    <button class="photo" type="button" {% if photo %}data-zoom="{{ url_for('static', filename=photo) }}"{% endif %}
                                         aria-label="Открыть фото: {{ variant.name }}">
-                                        <img src="{{ url_for('static', filename=photo) }}" alt="{{ variant.name }}" loading="lazy">
+                                        {% if photo %}<img src="{{ url_for('static', filename=photo) }}" alt="{{ variant.name }}" loading="lazy"{{ img(vp ~ '.photos.' ~ index) }}>
+                                        {% else %}<span class="ed-photo-empty"{{ img(vp ~ '.photos.' ~ index) }}>+ фото</span>{% endif %}
                                     </button>
+                                    {% endif %}
                                 {% endfor %}
                             </div>
                         </article>
                     {% endfor %}
+                    {{ add('stay.variants', 'variant', 'вариант проживания') }}
                 </div>
             </div>
         </section>
@@ -955,20 +982,25 @@
             <div class="wrap">
                 <div class="section-head reveal">
                     <div>
-                        <p class="eyebrow">{{ page.infrastructure.eyebrow }}</p>
-                        <h2 class="title">{{ page.infrastructure.title }}</h2>
+                        <p class="eyebrow"{{ e('infrastructure.eyebrow') }}>{{ page.infrastructure.eyebrow }}</p>
+                        <h2 class="title"{{ e('infrastructure.title') }}>{{ page.infrastructure.title }}</h2>
                     </div>
                 </div>
                 <div class="bento">
                     {% for item in page.infrastructure['items'] %}
-                        <figure class="photo reveal {{ item.size or '' }}" style="margin:0">
+                        {% set ip = 'infrastructure.items.' ~ loop.index0 %}
+                        <figure class="photo reveal ed-item {{ item.size or '' }}" style="margin:0">
                             <button class="photo" type="button" data-zoom="{{ url_for('static', filename=item.image) }}"
                                 aria-label="Открыть фото: {{ item.caption }}" style="width:100%;height:100%">
-                                <img src="{{ url_for('static', filename=item.image) }}" alt="{{ item.caption }}" loading="lazy">
+                                <img src="{{ url_for('static', filename=item.image) }}" alt="{{ item.caption }}" loading="lazy"{{ img(ip ~ '.image') }}>
                             </button>
-                            <figcaption>{{ item.caption }}</figcaption>
+                            <figcaption{{ e(ip ~ '.caption') }}>{{ item.caption }}</figcaption>
+                            {{ rm('infrastructure.items', loop.index0) }}
+                            {% if edit_mode %}<button type="button" class="ed-size" data-ed-size="{{ ip }}"
+                                title="Размер плитки">{{ {'wide': 'Широкая', 'tall': 'Высокая'}.get(item.size, 'Обычная') }}</button>{% endif %}
                         </figure>
                     {% endfor %}
+                    {{ add('infrastructure.items', 'photo', 'фото') }}
                 </div>
             </div>
         </section>
@@ -976,13 +1008,13 @@
         <section class="block" style="padding-top:0">
             <div class="wrap location">
                 <div class="reveal">
-                    <p class="eyebrow">{{ page.location.eyebrow }}</p>
-                    <p class="distance">{{ page.location.distance }}</p>
-                    <h2 class="title">{{ page.location.title }}</h2>
-                    <p>{{ page.location.text }}</p>
+                    <p class="eyebrow"{{ e('location.eyebrow') }}>{{ page.location.eyebrow }}</p>
+                    <p class="distance"{{ e('location.distance') }}>{{ page.location.distance }}</p>
+                    <h2 class="title"{{ e('location.title') }}>{{ page.location.title }}</h2>
+                    <p{{ e('location.text') }}>{{ page.location.text }}</p>
                 </div>
                 <div class="map reveal">
-                    <img src="{{ url_for('static', filename=page.location.image) }}" alt="Карта: проживание и стадион" loading="lazy">
+                    <img src="{{ url_for('static', filename=page.location.image) }}" alt="Карта: проживание и стадион" loading="lazy"{{ img('location.image') }}>
                 </div>
             </div>
         </section>
@@ -990,14 +1022,16 @@
         <section class="block" id="services" style="padding-top:0">
             <div class="wrap services">
                 <div class="card reveal">
-                    <p class="eyebrow">{{ page.included.eyebrow }}</p>
-                    <h2 class="title">{{ page.included.title }}</h2>
-                    <ul class="checks">{% for item in page.included['items'] %}<li>{{ item }}</li>{% endfor %}</ul>
+                    <p class="eyebrow"{{ e('included.eyebrow') }}>{{ page.included.eyebrow }}</p>
+                    <h2 class="title"{{ e('included.title') }}>{{ page.included.title }}</h2>
+                    <ul class="checks">{% for item in page.included['items'] %}<li class="ed-item"><span{{ e('included.items.' ~ loop.index0) }}>{{ item }}</span>{{ rm('included.items', loop.index0) }}</li>{% endfor %}</ul>
+                    {{ add('included.items', 'text', 'пункт') }}
                 </div>
                 <div class="card light reveal">
-                    <p class="eyebrow">{{ page.extras.eyebrow }}</p>
-                    <h2 class="title">{{ page.extras.title }}</h2>
-                    <ul class="checks">{% for item in page.extras['items'] %}<li>{{ item }}</li>{% endfor %}</ul>
+                    <p class="eyebrow"{{ e('extras.eyebrow') }}>{{ page.extras.eyebrow }}</p>
+                    <h2 class="title"{{ e('extras.title') }}>{{ page.extras.title }}</h2>
+                    <ul class="checks">{% for item in page.extras['items'] %}<li class="ed-item"><span{{ e('extras.items.' ~ loop.index0) }}>{{ item }}</span>{{ rm('extras.items', loop.index0) }}</li>{% endfor %}</ul>
+                    {{ add('extras.items', 'text', 'пункт') }}
                 </div>
             </div>
         </section>
@@ -1006,8 +1040,8 @@
             <div class="wrap">
                 <div class="section-head reveal">
                     <div>
-                        <p class="eyebrow">{{ page.tournaments.eyebrow }}</p>
-                        <h2 class="title">{{ page.tournaments.title }}</h2>
+                        <p class="eyebrow"{{ e('tournaments.eyebrow') }}>{{ page.tournaments.eyebrow }}</p>
+                        <h2 class="title"{{ e('tournaments.title') }}>{{ page.tournaments.title }}</h2>
                     </div>
                     <p class="subtitle"><a href="{{ main_site_url }}/tournaments-afisha">Все турниры, таблицы и результаты →</a></p>
                 </div>
@@ -1032,7 +1066,7 @@
                         {% endfor %}
                     </div>
                 {% else %}
-                    <p class="empty-note reveal">{{ page.tournaments.empty }}</p>
+                    <p class="empty-note reveal"{{ e('tournaments.empty') }}>{{ page.tournaments.empty }}</p>
                 {% endif %}
             </div>
         </section>
@@ -1040,8 +1074,8 @@
         <section class="wrap" id="contact">
             <div class="cta reveal">
                 {{ arcs }}
-                <h2 class="display">{% for line in page.contact.title_lines %}<span class="line">{{ line }}</span>{% endfor %}</h2>
-                <p>{{ page.contact.text }}{% if page.contact.contact_name %} Пишите или звоните: {{ page.contact.contact_name }}.{% endif %}</p>
+                <h2 class="display">{% for line in page.contact.title_lines %}<span class="line"{{ e('contact.title_lines.' ~ loop.index0) }}>{{ line }}</span>{% endfor %}</h2>
+                <p><span{{ e('contact.text') }}>{{ page.contact.text }}</span>{% if page.contact.contact_name %} Пишите или звоните: {{ page.contact.contact_name }}.{% endif %}</p>
                 <div class="cta-actions">
                     {% if page.contact.phone %}
                         <a class="btn btn-dark btn-contact" href="tel:{{ page.contact.phone | replace(' ', '') }}">
@@ -1119,5 +1153,10 @@
             });
         })();
     </script>
+{% if edit_mode %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/event_editor.css') }}?v=2026101701">
+    <script type="application/json" id="eventContent">{{ page | tojson }}</script>
+    <script src="{{ url_for('static', filename='js/event_editor.js') }}?v=2026101701"></script>
+{% endif %}
 </body>
 </html>
