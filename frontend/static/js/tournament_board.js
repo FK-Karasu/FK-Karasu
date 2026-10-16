@@ -4,44 +4,7 @@
  * если режим не приживётся, достаточно убрать этот файл и переключатель вида.
  */
 (() => {
-    const MODE_KEY = 'tournamentViewMode';
-    const board = { mode: 'steps', reveal: false, popoverMatch: null };
-
-    /* --- Режим отображения --- */
-
-    function readMode() {
-        try {
-            return window.localStorage.getItem(MODE_KEY) === 'board' ? 'board' : 'steps';
-        } catch (error) {
-            return 'steps';
-        }
-    }
-
-    function setMode(mode) {
-        board.mode = mode;
-        try {
-            window.localStorage.setItem(MODE_KEY, mode);
-        } catch (error) {
-            /* без запоминания */
-        }
-        applyMode();
-        if (mode === 'board') renderBoard();
-    }
-
-    function applyMode() {
-        const isBoard = board.mode === 'board';
-        document.querySelectorAll('[data-view-mode]').forEach((button) => {
-            button.classList.toggle('active', button.dataset.viewMode === board.mode);
-        });
-        byId('entryTabs').hidden = isBoard;
-        byId('boardPanel').hidden = !isBoard;
-        if (isBoard) {
-            document.querySelectorAll('[data-entry-panel]').forEach((panel) => { panel.hidden = true; });
-        } else {
-            switchEntryTab(catalogState.entryTab || 'entries');
-        }
-        closePopover();
-    }
+    const board = { reveal: false, popoverMatch: null };
 
     /* --- Шаблоны под число команд --- */
 
@@ -399,6 +362,14 @@
                     <input type="number" min="0" max="99" inputmode="numeric" data-sp="apen" value="${value(match.away_penalty)}" aria-label="Пенальти гостей">
                     <span class="sp-team"></span>
                 </div>` : ''}
+            <div class="sp-when">
+                <input type="datetime-local" data-sp="kickoff" value="${escapeHtml(match.kickoff_at || '')}" aria-label="Дата и время матча">
+                <select data-sp="stadium" aria-label="Стадион">
+                    <option value="">Стадион не выбран</option>
+                    ${(categoryOverview()?.stadiums || []).map((stadium) => `<option value="${stadium.id}"
+                        ${match.stadium_id === stadium.id ? 'selected' : ''}>${escapeHtml(stadium.name)}</option>`).join('')}
+                </select>
+            </div>
             <div class="sp-goals" data-sp-goals><p class="sp-hint">Загружаем состав…</p></div>
             <p class="sp-error" hidden></p>
             <div class="sp-actions">
@@ -597,6 +568,9 @@
             return input && input.value.trim() !== '' && !clear ? Number(input.value) : null;
         };
         const payload = { home_score: read('home'), away_score: read('away') };
+        // Время и стадион матча правятся здесь же (раньше — в строках матчей).
+        payload.kickoff_at = pop.querySelector('[data-sp="kickoff"]').value;
+        payload.stadium_id = pop.querySelector('[data-sp="stadium"]').value || null;
         if (match.stage === 'playoff') {
             payload.home_penalty = read('hpen');
             payload.away_penalty = read('apen');
@@ -717,7 +691,6 @@
     }
 
     function renderBoard() {
-        if (board.mode !== 'board') return;
         const data = categoryOverview();
         if (!data) return;
         renderTemplates(data);
@@ -740,10 +713,6 @@
     }
 
     function bind() {
-        byId('viewSwitch').addEventListener('click', (event) => {
-            const button = event.target.closest('[data-view-mode]');
-            if (button) setMode(button.dataset.viewMode);
-        });
         byId('boardTemplates').addEventListener('click', (event) => {
             const button = event.target.closest('[data-template-key]');
             if (!button || button.classList.contains('active')) return;
@@ -798,11 +767,9 @@
     const baseRenderCategory = renderCategory;
     renderCategory = function renderCategoryWithBoard() {
         baseRenderCategory();
-        applyMode();
+        closePopover();
         renderBoard();
     };
 
-    board.mode = readMode();
     bind();
-    window.TournamentBoard = { setMode };
 })();

@@ -344,22 +344,15 @@
                 <nav class="entry-tabs entry-steps" id="entryTabs" aria-label="Этапы турнира">
                     <button type="button" class="active" data-entry-tab="entries">
                         <span class="step-no">1</span><span class="step-title">Участники</span></button>
-                    <button type="button" data-entry-tab="scheme">
-                        <span class="step-no">2</span><span class="step-title">Схема</span></button>
-                    <button type="button" data-entry-tab="matches">
-                        <span class="step-no">3</span><span class="step-title" id="matchesTabTitle">Группы и матчи</span></button>
-                    <button type="button" data-entry-tab="playoff">
-                        <span class="step-no">4</span><span class="step-title">Плей-офф</span></button>
+                    <button type="button" data-entry-tab="board">
+                        <span class="step-no">2</span><span class="step-title">Турнир</span></button>
                     <button type="button" data-entry-tab="players">
-                        <span class="step-no">5</span><span class="step-title">Награды</span></button>
+                        <span class="step-no">3</span><span class="step-title">Награды</span></button>
                 </nav>
-                <div class="view-switch" id="viewSwitch" role="group" aria-label="Вид">
-                    <button type="button" data-view-mode="steps" class="active">Пошагово</button>
-                    <button type="button" data-view-mode="board">Интерактивно <sup>новое</sup></button>
-                </div>
+                
                 </div>
 
-                <div id="boardPanel" class="board-panel" hidden>
+                <div id="boardPanel" class="board-panel" data-entry-panel="board" hidden>
                     <section class="board-bar">
                         <div class="board-templates" id="boardTemplates" role="radiogroup" aria-label="Шаблон турнира"></div>
                         <div class="board-actions">
@@ -423,122 +416,6 @@
                 <div id="entriesList">
                     <div class="tournament-catalog-empty">Загрузка заявок…</div>
                 </div>
-                </div>
-
-                <div data-entry-panel="scheme" hidden>
-                    <section class="scheme-section">
-                        <div class="format-cards" id="formatCards" role="radiogroup" aria-label="Формат турнира">
-                            <label class="format-card">
-                                <input type="radio" name="tournamentFormat" value="groups_playoff">
-                                <img class="format-card-art" src="{{ url_for('static', filename='img/tournament/format-groups.webp') }}" alt="" loading="lazy">
-                                <strong>Группы + плей-офф</strong>
-                                <small>Сначала каждый с каждым в своей группе, лучшие выходят в сетку на вылет.
-                                    Как на чемпионате мира.</small>
-                            </label>
-                            <label class="format-card">
-                                <input type="radio" name="tournamentFormat" value="league">
-                                <img class="format-card-art" src="{{ url_for('static', filename='img/tournament/format-league.webp') }}" alt="" loading="lazy">
-                                <strong>Круговой турнир</strong>
-                                <small>Все играют со всеми в одной таблице. Чемпион — первое место.
-                                    Удобно, если команд 3–8.</small>
-                            </label>
-                            <label class="format-card">
-                                <input type="radio" name="tournamentFormat" value="knockout">
-                                <img class="format-card-art" src="{{ url_for('static', filename='img/tournament/format-knockout.webp') }}" alt="" loading="lazy">
-                                <strong>Олимпийская система</strong>
-                                <small>Сразу сетка по жребию: проиграл — выбыл. Самый короткий турнир.</small>
-                            </label>
-                        </div>
-                    </section>
-
-                    <section class="scheme-section tiebreak-block" id="tiebreakBlock">
-                        <div data-tiebreak-host></div>
-                    </section>
-
-                    <section class="scheme-section scheme-options" id="formatOptions">
-                        <label class="tournament-catalog-field" data-option="groups">
-                            <span>Групп</span>
-                            <input id="formatGroups" type="number" min="1" max="16" step="1" value="2">
-                        </label>
-                        <label class="tournament-catalog-field" data-option="advance">
-                            <span>Выходят из группы</span>
-                            <select id="formatAdvance">
-                                <option value="1">1 команда</option>
-                                <option value="2">2 команды</option>
-                                <option value="3">3 команды</option>
-                                <option value="4">4 команды</option>
-                            </select>
-                        </label>
-                        <div class="scheme-checks">
-                            <label class="roster-switch" data-option="third_place">
-                                <input id="formatThird" type="checkbox" checked>
-                                <span>Матч за 3 место</span>
-                            </label>
-                            <label class="roster-switch" data-option="placement"
-                                title="Команды, не вышедшие из групп, играют за 5-е, 7-е и следующие места">
-                                <input id="formatPlacement" type="checkbox" checked>
-                                <span>Матчи за 5-е и следующие места</span>
-                            </label>
-                        </div>
-                        <details class="scheme-more" data-option="more">
-                            <summary>Дополнительно: один или два круга</summary>
-                            <div class="scheme-more-body">
-                        <label class="tournament-catalog-field" data-option="legs">
-                            <span>Кругов</span>
-                            <select id="formatLegs">
-                                <option value="1">Один круг</option>
-                                <option value="2">Два круга (дома и в гостях)</option>
-                            </select>
-                        </label>
-                        
-                            </div>
-                        </details>
-                    </section>
-
-                    <section class="scheme-plan" id="schemePlan" aria-live="polite"></section>
-
-                    <div class="tournament-catalog-form-error" id="schemeError" hidden></div>
-                    <div class="scheme-actions">
-                        <button class="btn-primary" type="button" id="buildDrawBtn">
-                            <i data-lucide="shuffle"></i>
-                            <span id="buildDrawLabel">Жеребьёвка и календарь</span>
-                        </button>
-                        <button class="btn-secondary" type="button" id="buildKeepBtn" hidden>
-                            <i data-lucide="list-checks"></i>
-                            Пересобрать по текущим группам
-                        </button>
-                        <button class="btn-secondary danger" type="button" id="resetCategoryBtn" hidden>
-                            <i data-lucide="rotate-ccw"></i>
-                            Сбросить результаты
-                        </button>
-                    </div>
-
-                    <section class="scheme-section" id="groupBoardSection" hidden>
-                        <h3 class="scheme-title">Составы групп <small>перетащите команду, чтобы поменять группу</small></h3>
-                        <div class="tournament-catalog-form-error" id="groupFormError" hidden></div>
-                        <div class="group-board" id="groupBoard"></div>
-                    </section>
-                </div>
-
-                <div data-entry-panel="matches" hidden>
-                    <div class="matches-toolbar">
-                        <div class="stage-progress" id="groupProgress"></div>
-                        <button class="btn-primary" type="button" id="openScheduleBtn">
-                            <i data-lucide="calendar-clock"></i>
-                            Расставить по времени
-                        </button>
-                    </div>
-                    <div class="tournament-catalog-form-error" id="matchFormError" hidden></div>
-                    <div id="matchBoard"></div>
-                </div>
-
-                <div data-entry-panel="playoff" hidden>
-                    <div class="matches-toolbar">
-                        <div class="stage-progress" id="playoffProgress"></div>
-                    </div>
-                    <p class="group-hint">Сетка заполняется сама. При ничьей впишите пенальти.</p>
-                    <div class="tournament-catalog-form-error" id="playoffError" hidden></div>
-                    <div id="playoffBoard"></div>
                 </div>
 
                 <div data-entry-panel="players" hidden>
@@ -1073,8 +950,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}?v=2026080801"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101706"></script>
-    <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101707"></script>
-    <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101702"></script>
+    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101708"></script>
+    <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101708"></script>
+    <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101703"></script>
 </body>
 </html>

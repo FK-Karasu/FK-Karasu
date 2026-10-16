@@ -1336,9 +1336,7 @@ async function openTournamentEntries(tournamentId) {
     await loadCategory();
     // Открываем тот шаг, на котором организатор остановился.
     const steps = catalogState.overview?.steps || {};
-    if (steps.entries && !steps.format) switchEntryTab('scheme');
-    else if (steps.format && !steps.groups) switchEntryTab('matches');
-    else if (steps.format && !steps.playoff) switchEntryTab('playoff');
+    if (steps.entries && !steps.finished) switchEntryTab('board');
     renderSteps();
 }
 
@@ -1470,80 +1468,39 @@ async function loadCategory() {
     catalogState.matchStadiums = data.stadiums || [];
     catalogState.playoffMatches = data.playoff || [];
     catalogState.playoffResults = data.results || [];
-    if (!catalogState.formatDirty) fillFormatForm(data.settings);
     renderCategory();
 }
 
 function renderCategory() {
     renderTiebreak();
     renderSteps();
-    renderScheme();
-    renderGroups();
-    renderMatches();
-    renderPlayoff();
+    // Полотно турнира (tournament_board.js) встраивается сюда же.
 }
 
 /* Шаги: что уже сделано и куда идти дальше */
 
 function renderSteps() {
     const data = categoryOverview();
-    const format = currentFormat();
     const steps = data?.steps || {};
+    // Три шага: заявки → турнир (группы, матчи, сетка на одном полотне) → награды.
     const marks = {
         entries: steps.entries,
-        scheme: steps.format,
-        matches: data?.built && steps.groups,
-        playoff: data?.built && steps.playoff,
+        board: data?.built && steps.groups && steps.playoff,
         players: steps.finished,
     };
     document.querySelectorAll('[data-entry-tab]').forEach((button) => {
-        const tab = button.dataset.entryTab;
-        button.classList.toggle('done', Boolean(marks[tab]));
-        // Ненужные формату этапы прячем, чтобы не путали.
-        button.hidden = (tab === 'playoff' && format === 'league')
-            || (tab === 'matches' && format === 'knockout');
+        button.classList.toggle('done', Boolean(marks[button.dataset.entryTab]));
     });
-    byId('matchesTabTitle').textContent = format === 'league' ? 'Таблица' : 'Группы и матчи';
-
-    // Следующий шаг — оранжевая точка на вкладке вместо отдельной плашки.
+    // Следующий шаг — оранжевая точка на вкладке.
     let next = '';
     if (data) {
         if (!steps.entries) next = 'entries';
-        else if (!steps.format) next = 'scheme';
-        else if (!steps.groups) next = 'matches';
-        else if (!steps.playoff) next = 'playoff';
-        else if (!steps.finished) next = '';
+        else if (!marks.board) next = 'board';
         else next = 'players';
     }
     document.querySelectorAll('[data-entry-tab]').forEach((button) => {
         button.classList.toggle('next', button.dataset.entryTab === next && !button.classList.contains('done'));
     });
-}
-
-/* Схема: формат, параметры и живое описание */
-
-function fillFormatForm(settings) {
-    if (!settings) return;
-    document.querySelectorAll('input[name="tournamentFormat"]').forEach((input) => {
-        input.checked = input.value === settings.format;
-    });
-    byId('formatGroups').value = settings.groups;
-    byId('formatAdvance').value = String(settings.advance);
-    byId('formatLegs').value = String(settings.legs);
-    byId('formatThird').checked = Boolean(settings.third_place);
-    byId('formatPlacement').checked = settings.placement !== false;
-}
-
-function readFormatForm() {
-    const checked = document.querySelector('input[name="tournamentFormat"]:checked');
-    return {
-        format: checked ? checked.value : 'groups_playoff',
-        groups: Number(byId('formatGroups').value) || 1,
-        advance: Number(byId('formatAdvance').value) || 2,
-        legs: Number(byId('formatLegs').value) || 1,
-        third_place: byId('formatThird').checked,
-        placement: byId('formatPlacement').checked,
-    };
 }
 
 function splitSizes(total, groups) {
@@ -1557,142 +1514,12 @@ function roundName(matches) {
         || `1/${matches} финала`;
 }
 
-/* То же, что describe_plan на сервере: считаем сразу, без запроса, пока меняют поля. */
-function describePlan(teams, settings) {
-    const steps = [];
-    const warnings = [];
-    let groupMatches = 0;
-    let playoffMatches = 0;
-    let qualified = 0;
-    let placementMatches = 0;
-    let placementFrom = 0;
-    if (teams < 2) {
-        return { steps, warnings: ['Нужно минимум 2 подтверждённые команды'], groupMatches, playoffMatches };
-    }
-    const rr = (size) => (size * (size - 1) / 2) * settings.legs;
-    if (settings.format === 'league') {
-        groupMatches = rr(teams);
-        steps.push(`${pluralizeTeams(teams)} играют каждый с каждым ${settings.legs === 2
-            ? 'в два круга' : 'в один круг'}`);
-        steps.push('Чемпион — первое место в таблице');
-    } else if (settings.format === 'groups_playoff') {
-        const groups = Math.max(1, Math.min(settings.groups, Math.floor(teams / 2)));
-        if (groups !== settings.groups) warnings.push(`Для ${pluralizeTeams(teams)} групп может быть не больше ${groups}`);
-        const sizes = splitSizes(teams, groups);
-        groupMatches = sizes.reduce((sum, size) => sum + rr(size), 0);
-        const min = Math.min(...sizes);
-        const max = Math.max(...sizes);
-        const teamWord = (n) => (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)
-            ? 'команды' : 'команд');
-        steps.push(`${groups} ${groups === 1 ? 'группа' : groups < 5 ? 'группы' : 'групп'} по ${
-            min === max ? min : `${min}–${max}`} ${teamWord(max)} — каждый с каждым`);
-        const advance = Math.max(1, Math.min(settings.advance, min - 1 || 1));
-        if (advance !== settings.advance) warnings.push(`Из группы на ${min} команды выходят не больше ${advance}`);
-        qualified = groups * advance;
-        steps.push(`Из каждой группы выходят ${advance} → ${pluralizeTeams(qualified)} в плей-офф`);
-        if (settings.placement) {
-            // Как placement_plan на сервере: уровни ниже выхода играют пары за места.
-            let first = qualified + 1;
-            for (let level = advance + 1; level <= max; level += 1) {
-                const teamsAtLevel = sizes.filter((size) => size >= level).length;
-                placementMatches += Math.floor(teamsAtLevel / 2);
-                if (!placementFrom && teamsAtLevel >= 2) placementFrom = first;
-                first += teamsAtLevel;
-            }
-        }
-    } else {
-        qualified = teams;
-        steps.push(`${pluralizeTeams(teams)} по жребию, проигравший выбывает`);
-    }
-    if (settings.format !== 'league' && qualified >= 2) {
-        let size = 1;
-        while (size < qualified) size *= 2;
-        const byes = size - qualified;
-        steps.push(`Плей-офф начинается с этапа «${roundName(size / 2)}»${byes
-            ? `, ${byes} ${byes === 1 ? 'команда проходит' : 'команды проходят'} дальше без игры` : ''}`);
-        playoffMatches = qualified - 1;
-        if (settings.third_place && qualified >= 4) {
-            playoffMatches += 1;
-            steps.push('Финал и матч за 3 место');
-        } else {
-            steps.push('Финал определяет победителя');
-        }
-    }
-    if (placementMatches) {
-        steps.push(`Остальные разыгрывают места с ${placementFrom}-го: ${pluralizeMatches(placementMatches)}`);
-        playoffMatches += placementMatches;
-    }
-    return { steps, warnings, groupMatches, playoffMatches };
-}
-
 function pluralizeMatches(count) {
     const tail = count % 10;
     const tens = count % 100;
     if (tail === 1 && tens !== 11) return `${count} матч`;
     if (tail >= 2 && tail <= 4 && (tens < 12 || tens > 14)) return `${count} матча`;
     return `${count} матчей`;
-}
-
-function renderScheme() {
-    const data = categoryOverview();
-    const settings = readFormatForm();
-    const teams = data?.counts?.confirmed || 0;
-    const plan = describePlan(teams, settings);
-
-    document.querySelectorAll('.format-card').forEach((card) => {
-        card.classList.toggle('active', card.querySelector('input').checked);
-    });
-    const show = {
-        groups: settings.format === 'groups_playoff',
-        advance: settings.format === 'groups_playoff',
-        legs: settings.format !== 'knockout',
-        third_place: settings.format !== 'league',
-        placement: settings.format === 'groups_playoff',
-        more: settings.format !== 'knockout',
-    };
-    document.querySelectorAll('#formatOptions [data-option]').forEach((field) => {
-        field.hidden = !show[field.dataset.option];
-    });
-
-    const total = plan.groupMatches + plan.playoffMatches;
-    byId('schemePlan').innerHTML = `
-        <div class="scheme-plan-head">
-            <strong>${escapeHtml(FORMAT_TITLES[settings.format])}</strong>
-            <span>${escapeHtml(pluralizeTeams(teams))} · ${escapeHtml(pluralizeMatches(total))}</span>
-        </div>
-        <ol class="scheme-flow">
-            ${plan.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}
-        </ol>
-        ${plan.groupMatches && plan.playoffMatches ? `<p class="scheme-totals">
-            ${escapeHtml(pluralizeMatches(plan.groupMatches))} в группах +
-            ${escapeHtml(pluralizeMatches(plan.playoffMatches))} в плей-офф</p>` : ''}
-        ${plan.warnings.map((text) => `<p class="scheme-warning">${escapeHtml(text)}</p>`).join('')}`;
-
-    const built = Boolean(data?.built);
-    const hasResults = Boolean(data?.has_results);
-    const changed = data && JSON.stringify(pickSettings(data.settings)) !== JSON.stringify(pickSettings(settings));
-    byId('buildDrawLabel').textContent = settings.format === 'league'
-        ? (built ? 'Составить календарь заново' : 'Составить календарь')
-        : (built ? 'Новая жеребьёвка и календарь' : 'Жеребьёвка и календарь');
-    byId('buildDrawBtn').disabled = hasResults || teams < 2;
-    byId('buildKeepBtn').hidden = !(settings.format === 'groups_playoff' && catalogState.groups.length)
-        || hasResults;
-    byId('resetCategoryBtn').hidden = !built;
-    if (hasResults) {
-        showFormError('schemeError', 'Матчи уже идут — схема закреплена. Чтобы изменить её, '
-            + 'нажмите «Сбросить результаты» (счета и протоколы категории будут удалены).');
-    } else if (built && changed) {
-        showFormError('schemeError', 'Настройки изменены — нажмите кнопку ниже, чтобы пересобрать турнир.');
-    } else {
-        showFormError('schemeError');
-    }
-    byId('groupBoardSection').hidden = settings.format !== 'groups_playoff' || !catalogState.groups.length;
-}
-
-function pickSettings(settings) {
-    if (!settings) return null;
-    const { format, groups, advance, legs, third_place: third, placement } = settings;
-    return { format, groups, advance, legs, third, placement: placement !== false };
 }
 
 const TIEBREAK_OPTIONS = [
@@ -1729,7 +1556,6 @@ function renderTiebreak() {
     });
     // В олимпийской системе таблиц нет — правило не нужно.
     const knockout = data?.settings?.format === 'knockout';
-    byId('tiebreakBlock').hidden = knockout;
     byId('boardTiebreak').hidden = knockout || !data?.groups?.length;
 }
 
@@ -1747,44 +1573,6 @@ async function setTiebreak(key) {
     }
 }
 
-let formatSaveTimer = null;
-function onFormatChange() {
-    catalogState.formatDirty = true;
-    renderScheme();
-    // Настройки сохраняем сами, чтобы при следующем открытии окна они не потерялись.
-    window.clearTimeout(formatSaveTimer);
-    formatSaveTimer = window.setTimeout(() => {
-        apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/format`, {
-            method: 'PUT',
-            body: JSON.stringify({ age_group: catalogState.age, settings: readFormatForm() }),
-        }).catch(showPageError);
-    }, 500);
-}
-
-async function buildCategory(draw) {
-    const data = categoryOverview();
-    if (data?.built && !window.confirm(draw
-        ? 'Календарь будет составлен заново, группы — по новому жребию. Продолжить?'
-        : 'Календарь будет составлен заново по текущим группам. Продолжить?')) return;
-    try {
-        showFormError('schemeError');
-        window.clearTimeout(formatSaveTimer);
-        const result = await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/build`, {
-            method: 'POST',
-            body: JSON.stringify({ age_group: catalogState.age, draw, settings: readFormatForm() }),
-        });
-        catalogState.formatDirty = false;
-        await loadCategory();
-        const parts = [];
-        if (result.group_matches) parts.push(`${pluralizeMatches(result.group_matches)} в группах`);
-        if (result.playoff_matches) parts.push(`${pluralizeMatches(result.playoff_matches)} в плей-офф`);
-        showFormError('schemeError');
-        showNotice('schemePlan', `Готово: ${parts.join(' и ')}. Теперь можно расставить матчи по времени.`);
-    } catch (error) {
-        showFormError('schemeError', error.message);
-    }
-}
-
 async function resetCategory() {
     if (!window.confirm(`Удалить календарь, сетку, счета и протоколы категории ${catalogState.age}? `
         + 'Заявки и группы останутся.')) return;
@@ -1798,88 +1586,7 @@ async function resetCategory() {
         catalogState.formatDirty = false;
         await loadCategory();
     } catch (error) {
-        showFormError('schemeError', error.message);
-    }
-}
-
-function showNotice(afterId, text) {
-    const host = byId(afterId);
-    host.querySelector('.scheme-success')?.remove();
-    host.insertAdjacentHTML('beforeend', `<p class="scheme-success">${escapeHtml(text)}</p>`);
-}
-
-/* --- Группы: ручная правка состава --- */
-
-function groupTeamMarkup(entry) {
-    return `
-        <div class="group-team" data-entry="${entry.id}">
-            <span class="catalog-row-icon">
-                ${entry.team_logo_url
-                    ? `<img src="${escapeHtml(entry.team_logo_url)}" alt="">`
-                    : `<span>${escapeHtml(initials(entry.team_name))}</span>`}
-            </span>
-            <span class="group-team-name">${escapeHtml(entry.team_name)}</span>
-        </div>`;
-}
-
-function renderGroups() {
-    const board = byId('groupBoard');
-    const groups = catalogState.groups;
-    const entries = catalogState.groupEntries;
-    if (!groups.length) {
-        board.innerHTML = '';
-        return;
-    }
-    const unassigned = entries.filter((entry) => !entry.group_id);
-    const columns = groups.map((group) => {
-        const items = entries.filter((entry) => Number(entry.group_id) === group.id);
-        return `
-            <section class="group-column" data-group="${group.id}">
-                <header>
-                    <strong>Группа ${escapeHtml(group.name)}</strong>
-                    <span>${escapeHtml(pluralizeTeams(items.length))}</span>
-                </header>
-                <div class="group-drop" data-group-drop="${group.id}">
-                    ${items.map(groupTeamMarkup).join('') || '<p class="group-empty">Перетащите команду сюда</p>'}
-                </div>
-            </section>`;
-    });
-    if (unassigned.length) {
-        columns.unshift(`
-            <section class="group-column unassigned" data-group="">
-                <header>
-                    <strong>Без группы</strong>
-                    <span>${escapeHtml(pluralizeTeams(unassigned.length))}</span>
-                </header>
-                <div class="group-drop" data-group-drop="">
-                    ${unassigned.map(groupTeamMarkup).join('')}
-                </div>
-            </section>`);
-    }
-    board.innerHTML = columns.join('');
-    board.classList.toggle('locked', Boolean(categoryOverview()?.has_results));
-    refreshIcons();
-}
-
-async function moveEntryToGroup(entryId, groupId) {
-    if (categoryOverview()?.has_results) {
-        showFormError('groupFormError', 'Матчи уже идут — группы закреплены.');
-        return;
-    }
-    try {
-        showFormError('groupFormError');
-        const result = await apiJson(`/api/tournament-entries/${entryId}`, {
-            method: 'PUT',
-            body: JSON.stringify({ group_id: groupId ? Number(groupId) : null }),
-        });
-        if (result.calendar_reset) {
-            showFormError('groupFormError', 'Календарь сброшен: в группе меньше двух команд. '
-                + 'Распределите команды и нажмите «Пересобрать по текущим группам».');
-        }
-        await loadCategory();
-    } catch (error) {
-        showFormError('groupFormError', error.message);
-        await loadCategory();
+        showFormError('boardError', error.message);
     }
 }
 
@@ -1981,142 +1688,6 @@ function bindDragBoard(board, { item, zone, canDrop = () => true, onDrop, isLock
     board.addEventListener('pointercancel', () => cleanup());
 }
 
-function bindGroupBoard() {
-    const board = byId('groupBoard');
-    bindDragBoard(board, {
-        item: '[data-entry]',
-        zone: '[data-group-drop]',
-        isLocked: () => board.classList.contains('locked'),
-        onDrop: (el, target) => moveEntryToGroup(el.dataset.entry, target.dataset.groupDrop),
-    });
-}
-
-/* --- Матчи и таблица --- */
-
-const FORM_LABELS = { W: 'В', D: 'Н', L: 'П' };
-
-function standingsMarkup(rows) {
-    return `
-        <div class="catalog-table-wrap">
-            <table class="catalog-data-table standings-table">
-                <thead>
-                    <tr>
-                        <th>Место</th><th>Команда</th><th title="Игры">И</th><th title="Победы">В</th>
-                        <th title="Ничьи">Н</th><th title="Поражения">П</th><th title="Забито и пропущено">Мячи</th>
-                        <th title="Разница забитых и пропущенных">±</th><th title="Очки">О</th>
-                        <th class="form-col" title="Последние матчи">Форма</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rows.map((row) => `
-                        <tr class="${row.qualifies ? 'qualifies' : ''}">
-                            <td data-label="Место"><span class="place-badge">${row.place}</span></td>
-                            <td data-label="Команда">
-                                <span class="catalog-primary-cell">
-                                    <span class="catalog-row-icon">
-                                        ${row.team_logo_url
-                                            ? `<img src="${escapeHtml(row.team_logo_url)}" alt="">`
-                                            : `<span>${escapeHtml(initials(row.team_name))}</span>`}
-                                    </span>
-                                    <strong>${escapeHtml(row.team_name)}</strong>
-                                </span>
-                            </td>
-                            <td data-label="Игры">${row.played}</td>
-                            <td data-label="Победы">${row.won}</td>
-                            <td data-label="Ничьи">${row.drawn}</td>
-                            <td data-label="Поражения">${row.lost}</td>
-                            <td data-label="Мячи">${row.goals_for}–${row.goals_against}</td>
-                            <td data-label="Разница">${row.diff > 0 ? '+' : ''}${row.diff}</td>
-                            <td data-label="Очки"><strong>${row.points}</strong></td>
-                            <td data-label="Форма" class="form-col"><span class="form-dots">${(row.form || [])
-                                .map((mark) => `<i class="form-${mark}" title="${FORM_LABELS[mark]}">${FORM_LABELS[mark]}</i>`)
-                                .join('')}</span></td>
-                        </tr>`).join('')}
-                </tbody>
-            </table>
-        </div>`;
-}
-
-function stadiumOptions(selectedId) {
-    return ['<option value="">Стадион не выбран</option>'].concat(
-        catalogState.matchStadiums.map((item) =>
-            `<option value="${item.id}" ${selectedId === item.id ? 'selected' : ''}>
-                ${escapeHtml(item.name)}</option>`),
-    ).join('');
-}
-
-function matchRowMarkup(match) {
-    return `
-        <div class="match-row${match.is_played ? ' played' : ''}" data-match="${match.id}">
-            <span class="match-team home">${escapeHtml(match.home.team_name)}</span>
-            <span class="match-score">
-                <input type="number" min="0" max="99" inputmode="numeric" data-score="home"
-                    value="${match.home_score === null ? '' : match.home_score}" aria-label="Голы хозяев">
-                <em>:</em>
-                <input type="number" min="0" max="99" inputmode="numeric" data-score="away"
-                    value="${match.away_score === null ? '' : match.away_score}" aria-label="Голы гостей">
-            </span>
-            <span class="match-team away">${escapeHtml(match.away.team_name)}</span>
-            <input class="match-time" type="datetime-local" data-kickoff
-                value="${match.kickoff_at || ''}" aria-label="Дата и время матча">
-            <select class="match-stadium" data-stadium aria-label="Стадион">${stadiumOptions(match.stadium_id)}</select>
-            <button class="match-protocol" type="button" data-protocol="${match.id}"
-                ${match.is_played ? '' : 'disabled'} title="Протокол матча: голы и карточки">
-                <i data-lucide="clipboard-list"></i>
-            </button>
-        </div>`;
-}
-
-function progressMarkup(played, total, label) {
-    const percent = total ? Math.round((played / total) * 100) : 0;
-    return `<span class="stage-progress-text">${escapeHtml(label)}: <strong>${played} из ${total}</strong></span>
-        <span class="stage-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${total}"
-            aria-valuenow="${played}"><span style="width:${percent}%"></span></span>`;
-}
-
-function renderMatches() {
-    const board = byId('matchBoard');
-    const data = categoryOverview();
-    const blocks = catalogState.matchBlocks;
-    byId('groupProgress').innerHTML = data?.counts?.group_matches
-        ? progressMarkup(data.counts.group_played, data.counts.group_matches, 'Сыграно матчей') : '';
-    if (!blocks.length || !blocks.some((block) => block.matches.length)) {
-        board.innerHTML = emptyCatalogMarkup(
-            'list-checks',
-            'Календарь ещё не составлен',
-            'Перейдите на шаг «Схема», выберите формат и нажмите «Жеребьёвка и календарь».',
-        );
-        refreshIcons();
-        return;
-    }
-    const league = currentFormat() === 'league';
-    const advance = data?.settings?.advance || 0;
-    board.innerHTML = blocks.map((block) => {
-        const byRound = new Map();
-        block.matches.forEach((match) => {
-            if (!byRound.has(match.round_no)) byRound.set(match.round_no, []);
-            byRound.get(match.round_no).push(match);
-        });
-        return `
-            <section class="match-block">
-                <h3 class="entry-group-title">${league ? 'Таблица' : `Группа ${escapeHtml(block.group.name)}`}
-                    <span>${escapeHtml(pluralizeTeams(block.standings.length))}${block.finished
-                        ? ' · группа доиграна' : ''}</span>
-                </h3>
-                ${block.standings.length ? standingsMarkup(block.standings) : ''}
-                ${!league && advance && catalogState.playoffMatches.length
-                    ? `<p class="standings-legend"><i></i> выходят в плей-офф (${advance} из группы)</p>` : ''}
-                ${block.standings.length ? tiebreakNoteMarkup() : ''}
-                ${[...byRound.entries()].map(([round, matches]) => `
-                    <div class="match-round-block">
-                        <p class="match-round-title">Тур ${round}</p>
-                        <div class="match-list">${matches.map(matchRowMarkup).join('')}</div>
-                    </div>`).join('')}
-            </section>`;
-    }).join('');
-    refreshIcons();
-}
-
 function openScheduleDialog() {
     const tournament = catalogState.tournaments
         .find((row) => Number(row.id) === Number(catalogState.entriesTournamentId));
@@ -2169,168 +1740,10 @@ async function runSchedule() {
     }
 }
 
-function matchScoreState(row) {
-    const scores = row.querySelectorAll('[data-score]');
-    return {
-        scores,
-        homeFilled: scores[0].value.trim() !== '',
-        awayFilled: scores[1].value.trim() !== '',
-    };
-}
-
-async function saveMatch(row, errorId = 'matchFormError') {
-    const { scores, homeFilled, awayFilled } = matchScoreState(row);
-    // Половина счёта серверу не нужна — ждём второе число.
-    if (homeFilled !== awayFilled) return;
-    const payload = {
-        home_score: homeFilled ? Number(scores[0].value) : null,
-        away_score: awayFilled ? Number(scores[1].value) : null,
-    };
-    const kickoff = row.querySelector('[data-kickoff]');
-    const stadium = row.querySelector('[data-stadium]');
-    if (kickoff) payload.kickoff_at = kickoff.value;
-    if (stadium) payload.stadium_id = stadium.value || null;
-    const pens = row.querySelectorAll('[data-pen]');
-    if (pens.length) {
-        const filled = (input) => input.value.trim() !== '';
-        payload.home_penalty = filled(pens[0]) ? Number(pens[0].value) : null;
-        payload.away_penalty = filled(pens[1]) ? Number(pens[1].value) : null;
-    }
-    try {
-        showFormError(errorId);
-        const result = await apiJson(`/api/tournament-matches/${row.dataset.match}`, {
-            method: 'PUT',
-            body: JSON.stringify(payload),
-        });
-        await loadCategory();
-        if (result.warning) showFormError(errorId, result.warning);
-    } catch (error) {
-        showFormError(errorId, error.message);
-        await loadCategory();
-    }
-}
-
-/* --- Плей-офф: сетка на вылет --- */
-
-const PLACE_TITLES = { 1: 'Победитель', 2: 'Второе место', 3: 'Третье место', 4: 'Четвёртое место' };
-
-function resultsMarkup(results) {
-    return `
-        <section class="po-results">
-            <h3>Итоги</h3>
-            <div class="po-results-list">
-                ${results.map((row) => `
-                    <div class="po-place po-place-${row.place}">
-                        <span class="po-medal">${row.place}</span>
-                        <span class="po-place-team">
-                            <strong>${escapeHtml(row.team_name)}</strong>
-                            <small>${escapeHtml(PLACE_TITLES[row.place] || '')}</small>
-                        </span>
-                    </div>`).join('')}
-            </div>
-        </section>`;
-}
-
-function playoffSideMarkup(side, isWinner) {
-    const known = Boolean(side.entry_id);
-    return `<span class="po-team${known ? '' : ' pending'}${isWinner ? ' winner' : ''}">
-        ${escapeHtml(side.team_name)}</span>`;
-}
-
-function playoffMatchMarkup(match, number) {
-    if (match.is_bye) {
-        const team = match.home.is_bye ? match.away : match.home;
-        return `
-            <div class="po-match bye" data-match="${match.id}">
-                <span class="po-number"></span>
-                <span class="po-team${team.entry_id ? '' : ' pending'}">${escapeHtml(team.team_name)}</span>
-                <span class="po-bye-note">проходит дальше без игры</span>
-            </div>`;
-    }
-    const winner = match.winner_entry_id;
-    const ready = Boolean(match.home.entry_id && match.away.entry_id);
-    const draw = ready && match.home_score !== null && match.home_score === match.away_score;
-    return `
-        <div class="po-match${match.is_played ? ' played' : ''}${ready ? '' : ' waiting'}" data-match="${match.id}">
-            <span class="po-number" title="${escapeHtml(match.label || '')}">${match.stage === 'placement'
-                ? escapeHtml(String(match.bracket_slot)) + '-е' : number}</span>
-            ${playoffSideMarkup(match.home, winner && winner === match.home.entry_id)}
-            <span class="po-score">
-                <input type="number" min="0" max="99" inputmode="numeric" data-score="home" ${ready ? '' : 'disabled'}
-                    value="${match.home_score === null ? '' : match.home_score}" aria-label="Голы хозяев">
-                <em>:</em>
-                <input type="number" min="0" max="99" inputmode="numeric" data-score="away" ${ready ? '' : 'disabled'}
-                    value="${match.away_score === null ? '' : match.away_score}" aria-label="Голы гостей">
-            </span>
-            ${playoffSideMarkup(match.away, winner && winner === match.away.entry_id)}
-            <span class="po-pen${draw ? '' : ' muted'}" title="Серия пенальти — только при ничьей">
-                пен.
-                <input type="number" min="0" max="99" inputmode="numeric" data-pen="home" ${draw ? '' : 'disabled'}
-                    value="${draw && match.home_penalty !== null ? match.home_penalty : ''}"
-                    aria-label="Пенальти хозяев">
-                <em>:</em>
-                <input type="number" min="0" max="99" inputmode="numeric" data-pen="away" ${draw ? '' : 'disabled'}
-                    value="${draw && match.away_penalty !== null ? match.away_penalty : ''}"
-                    aria-label="Пенальти гостей">
-            </span>
-            <button class="match-protocol" type="button" data-protocol="${match.id}"
-                ${match.is_played ? '' : 'disabled'} title="Протокол матча: голы и карточки">
-                <i data-lucide="clipboard-list"></i>
-            </button>
-            ${match.kickoff_at ? `<span class="po-time">${escapeHtml(formatKickoff(match.kickoff_at))}${
-                match.stadium_name ? ` · ${escapeHtml(match.stadium_name)}` : ''}</span>` : ''}
-        </div>`;
-}
-
 function formatKickoff(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
-
-function renderPlayoff() {
-    const board = byId('playoffBoard');
-    const data = categoryOverview();
-    const matches = catalogState.playoffMatches;
-    byId('playoffProgress').innerHTML = data?.counts?.playoff_matches
-        ? progressMarkup(data.counts.playoff_played, data.counts.playoff_matches, 'Сыграно матчей') : '';
-    if (!matches.length && !(data?.placement || []).length) {
-        board.innerHTML = emptyCatalogMarkup(
-            'git-branch',
-            'Сетка ещё не создана',
-            currentFormat() === 'league'
-                ? 'В круговом турнире плей-офф нет — победитель определяется по таблице.'
-                : 'Сетка создаётся вместе с календарём на шаге «Схема».',
-        );
-        refreshIcons();
-        return;
-    }
-    const byRound = new Map();
-    matches.forEach((match) => {
-        const key = `${match.round_no}|${match.label || ''}`;
-        if (!byRound.has(key)) byRound.set(key, []);
-        byRound.get(key).push(match);
-    });
-
-    // Номера — те же, что в подписях «Победитель матча N» на сервере: пустышки не считаем.
-    let counter = 0;
-    board.innerHTML = `<div class="po-rounds">${[...byRound.entries()].map(([key, items]) => `
-        <section class="po-round">
-            <h3 class="entry-group-title">${escapeHtml(key.split('|')[1] || 'Раунд')}</h3>
-            ${items.map((match) => playoffMatchMarkup(match, match.is_bye ? '' : ++counter)).join('')}
-        </section>`).join('')}</div>`;
-
-    const placement = categoryOverview()?.placement || [];
-    if (placement.length) {
-        board.insertAdjacentHTML('beforeend', `
-            <section class="po-round po-placement">
-                <h3 class="entry-group-title">Матчи за места</h3>
-                ${placement.map((match) => playoffMatchMarkup(match, ++counter)).join('')}
-            </section>`);
-    }
-    const results = catalogState.playoffResults;
-    if (results.length) board.insertAdjacentHTML('afterbegin', resultsMarkup(results));
-    refreshIcons();
 }
 
 /* --- Состав по категориям: кто из игроков клуба где играет --- */
@@ -2936,7 +2349,7 @@ function renderPlayers() {
         board.innerHTML = emptyCatalogMarkup(
             'clipboard-list',
             'Протоколы ещё не заполнены',
-            'Откройте сыгранный матч (кнопка с планшетом справа от счёта) и внесите голы.',
+            'На вкладке «Турнир» нажмите на счёт матча и укажите, кто забил.',
         );
         refreshIcons();
         return;
@@ -3492,38 +2905,11 @@ function bindEvents() {
         const button = event.target.closest('[data-category]');
         if (button) switchCategory(button.dataset.category).catch(showPageError);
     });
-    byId('formatCards').addEventListener('change', onFormatChange);
     byId('tournamentEntriesModal').addEventListener('change', (event) => {
         const select = event.target.closest('[data-tiebreak-select]');
         if (select) setTiebreak(select.value);
     });
-    byId('formatOptions').addEventListener('change', onFormatChange);
-    byId('formatGroups').addEventListener('input', onFormatChange);
-    byId('buildDrawBtn').addEventListener('click', () => buildCategory(true).catch(showPageError));
-    byId('buildKeepBtn').addEventListener('click', () => buildCategory(false).catch(showPageError));
-    byId('resetCategoryBtn').addEventListener('click', () => resetCategory().catch(showPageError));
-    byId('playoffBoard').addEventListener('change', (event) => {
-        const row = event.target.closest('[data-match]');
-        if (row) saveMatch(row, 'playoffError').catch(showPageError);
-    });
-    byId('playoffBoard').addEventListener('input', () => showFormError('playoffError'));
-    byId('openScheduleBtn').addEventListener('click', openScheduleDialog);
     byId('runScheduleBtn').addEventListener('click', () => runSchedule().catch(showPageError));
-    byId('matchBoard').addEventListener('change', (event) => {
-        const row = event.target.closest('[data-match]');
-        if (row) saveMatch(row).catch(showPageError);
-    });
-    byId('matchBoard').addEventListener('input', (event) => {
-        // Пока вводят счёт, старое сообщение об ошибке только мешает.
-        if (event.target.matches('[data-score]')) showFormError('matchFormError');
-    });
-    // Кнопка протокола есть и в групповых матчах, и в плей-офф.
-    ['matchBoard', 'playoffBoard'].forEach((id) => {
-        byId(id).addEventListener('click', (event) => {
-            const button = event.target.closest('[data-protocol]');
-            if (button) openProtocol(button.dataset.protocol).catch(showPageError);
-        });
-    });
     byId('awardsBoard').addEventListener('change', (event) => {
         const select = event.target.closest('[data-award-select]');
         if (!select) return;
@@ -3654,7 +3040,6 @@ function bindEvents() {
         }
         renderProtocolEvents();
     });
-    bindGroupBoard();
     byId('entryTeamInput').addEventListener('focus', openTeamPicker);
     byId('entryTeamInput').addEventListener('input', openTeamPicker);
     byId('entryTeamInput').addEventListener('keydown', (event) => {

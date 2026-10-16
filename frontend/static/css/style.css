@@ -17149,3 +17149,24 @@ table.stat-table tr.stat-muted td { opacity: .5; }
     color: #b45f09;
     font-weight: 750;
 }
+
+.sp-when {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 6px;
+    margin-top: 10px;
+}
+
+#scorePopover .sp-when input,
+#scorePopover .sp-when select {
+    width: 100% !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 8px !important;
+    border: 1px solid #e4e0dc !important;
+    border-radius: 8px !important;
+    background: #fff !important;
+    font-size: 12.5px !important;
+    font-weight: 500 !important;
+    text-align: left;
+}
