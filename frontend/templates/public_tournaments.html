@@ -990,7 +990,14 @@
                 </div>`;
         }
 
+        function groupTitle(category, group) {
+            // В круговом турнире одна общая таблица — «Группа A» только путает.
+            return category.format === 'league' ? 'Таблица' : `Группа ${escapeHtml(group.name)}`;
+        }
+
         function playoffMarkup(matches) {
+            // Свободное место в сетке — не матч: команда проходит дальше без игры.
+            matches = matches.filter((m) => !m.is_bye);
             if (!matches.length) return '';
             const byLabel = new Map();
             matches.forEach((m) => {
@@ -1222,7 +1229,7 @@
             }
             return category.groups.map((group) => `
                 <div class="grp-block">
-                    <p class="grp-title">Группа ${escapeHtml(group.name)}</p>
+                    <p class="grp-title">${groupTitle(category, group)}</p>
                     ${group.standings.length ? standingsMarkup(group.standings) : ''}
                     ${group.matches.length
                         ? `<div class="fixtures">${group.matches.map(fixtureMarkup).join('')}</div>`
@@ -1247,10 +1254,11 @@
             };
             const tabs = [
                 ['results', 'Итоги'],
-                ['tables', 'Таблицы'],
+                ['tables', category.format === 'knockout' ? 'Участники' : 'Таблицы'],
                 ['playoff', 'Плей-офф'],
                 ['players', 'Игроки'],
-            ];
+            ].filter(([key]) => key !== 'playoff' || (category.playoff || []).length);
+            if (!tabs.some(([key]) => key === state.sheetTab)) state.sheetTab = tabs[0][0];
             return `
                 ${categories.length > 1 ? `
                     <div class="cat-switch">
@@ -1287,7 +1295,7 @@
                 const body = category.groups.length
                     ? category.groups.map((group) => `
                         <div class="grp-block">
-                            <p class="grp-title">Группа ${escapeHtml(group.name)}</p>
+                            <p class="grp-title">${groupTitle(category, group)}</p>
                             ${group.standings.length ? standingsMarkup(group.standings) : ''}
                             ${group.matches.length
                                 ? `<div class="fixtures">${group.matches.map(fixtureMarkup).join('')}</div>`

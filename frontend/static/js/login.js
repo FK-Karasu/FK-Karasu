@@ -135,53 +135,6 @@ resetPasswordForm?.addEventListener('submit', async (event) => {
     });
 })();
 
-// Секретная последовательность для входа в админку
-(() => {
-    const root = document.body;
-    if (!root || !root.classList.contains('login-page')) return;
-
-    const secret = 'adminadminadmin';
-    let buffer = '';
-    let lastInputTime = Date.now();
-
-    const triggerMagicLogin = async () => {
-        try {
-            const response = await fetch('/login', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ magic: secret })
-            });
-
-            const data = await response.json();
-            if (data.success) {
-                window.location.href = data.redirect || '/dashboard';
-            }
-        } catch (error) {
-            // ignore
-        }
-    };
-
-    document.addEventListener('keydown', (e) => {
-        // Сбрасываем буфер после паузы
-        if (Date.now() - lastInputTime > 2000) {
-            buffer = '';
-        }
-        lastInputTime = Date.now();
-
-        if (e.key.length === 1) {
-            buffer += e.key.toLowerCase();
-            if (buffer.length > secret.length) {
-                buffer = buffer.slice(-secret.length);
-            }
-            if (buffer === secret) {
-                triggerMagicLogin();
-            }
-        }
-    });
-})();
-
 // Анимированная сетка фона с реакцией на мышь (только для страницы входа)
 (() => {
     const root = document.body;

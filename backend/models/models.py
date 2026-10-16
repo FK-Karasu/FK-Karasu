@@ -736,7 +736,7 @@ class StudentCard(db.Model):
 
 
 class Tournament(db.Model):
-    """Карточка турнира без матчей, сетки и составов."""
+    """Карточка турнира. Матчи, группы и сетка живут в отдельных таблицах."""
     __tablename__ = 'tournaments'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -748,6 +748,9 @@ class Tournament(db.Model):
     age_groups = db.Column(db.Text, nullable=True)
     poster_path = db.Column(db.String(300), nullable=True)
     is_published = db.Column(db.Boolean, nullable=False, default=True)
+    # Формат каждой возрастной категории: JSON {"2015": {"format": "groups_playoff", ...}}.
+    # У разных возрастов один турнир может идти по разным схемам.
+    formats = db.Column(db.Text, nullable=True)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=get_local_datetime)
     updated_at = db.Column(db.DateTime, default=get_local_datetime, onupdate=get_local_datetime)
@@ -931,6 +934,10 @@ class TournamentMatch(db.Model):
     home_label = db.Column(db.String(120), nullable=True)
     away_label = db.Column(db.String(120), nullable=True)
     bracket_slot = db.Column(db.Integer, nullable=True)
+    # Откуда придёт участник первого раунда плей-офф: «g:<group_id>:<место>»,
+    # «e:<entry_id>» (олимпийская система) или «bye» — свободное место.
+    home_seed = db.Column(db.String(40), nullable=True)
+    away_seed = db.Column(db.String(40), nullable=True)
     next_match_id = db.Column(db.Integer, nullable=True)
     next_slot = db.Column(db.String(8), nullable=True)
     loser_next_match_id = db.Column(db.Integer, nullable=True)
@@ -948,9 +955,27 @@ class TournamentMatch(db.Model):
     def is_played(self):
         return self.home_score is not None and self.away_score is not None
 
+    def side_is_bye(self, side):
+        seed = self.home_seed if side == 'home' else self.away_seed
+        if seed == 'bye':
+            return True
+        # Сетки, собранные до появления seed: свободное место без подписи.
+        if seed is None and self.stage == self.STAGE_PLAYOFF and self.round_no == 1:
+            entry = self.home_entry_id if side == 'home' else self.away_entry_id
+            label = self.home_label if side == 'home' else self.away_label
+            return entry is None and not label
+        return False
+
+    @property
+    def is_bye(self):
+        """Матч-пустышка: у команды нет соперника, она проходит без игры."""
+        return self.side_is_bye('home') or self.side_is_bye('away')
+
     @property
     def winner_entry_id(self):
         """Кто проходит дальше. Ничья решается серией пенальти."""
+        if self.is_bye:
+            return self.away_entry_id if self.side_is_bye('home') else self.home_entry_id
         if not self.is_played:
             return None
         if self.home_score > self.away_score:
@@ -968,7 +993,7 @@ class TournamentMatch(db.Model):
     @property
     def loser_entry_id(self):
         winner = self.winner_entry_id
-        if winner is None:
+        if winner is None or self.is_bye:
             return None
         return self.away_entry_id if winner == self.home_entry_id else self.home_entry_id
 

@@ -295,10 +295,10 @@
             </span>`;
         }
 
-        function standingsPanel(group) {
+        function standingsPanel(group, league) {
             return `
                 <section class="panel">
-                    <h2>Группа ${escapeHtml(group.name)}</h2>
+                    <h2>${league ? 'Таблица' : `Группа ${escapeHtml(group.name)}`}</h2>
                     <table>
                         <thead><tr><th>#</th><th>Команда</th><th>И</th><th>Мячи</th><th>Очки</th></tr></thead>
                         <tbody>${group.standings.map((row) => `
@@ -498,10 +498,11 @@
                 const tag = category.age_group ? `${category.age_group} · ` : '';
                 const groups = (category.groups || []).filter((g) => g.standings.length);
                 for (let i = 0; i < groups.length; i += 2) {
+                    const league = category.format === 'league';
                     scenes.push({
-                        name: `${tag}Группы`,
+                        name: `${tag}${league ? 'Таблица' : 'Группы'}`,
                         html: `<div class="scene-grid">${groups.slice(i, i + 2)
-                            .map(standingsPanel).join('')}</div>`,
+                            .map((group) => standingsPanel(group, league)).join('')}</div>`,
                     });
                 }
                 if ((category.playoff || []).length) {

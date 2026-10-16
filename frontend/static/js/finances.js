@@ -366,8 +366,8 @@ function renderDebtorsAccordion(debtors) {
             <div class="debt-accordion-item ${idx === 0 ? 'open' : ''}">
                 <div class="debt-accordion-header">
                     <div class="student-info">
-                        <div class="student-name">${g.student_name}</div>
-                        <div class="student-phone">${g.student_phone}</div>
+                        <div class="student-name">${escapeHtml(g.student_name)}</div>
+                        <div class="student-phone">${escapeHtml(g.student_phone)}</div>
                     </div>
                     <div style="display:flex; align-items:center; gap:12px;">
                         <span class="badge-count">${g.items.length} мес.</span>
@@ -738,7 +738,7 @@ async function loadIncomeGroups() {
         const groupSelect = document.getElementById('income-group-filter');
         if (groupSelect) {
             groupSelect.innerHTML = '<option value="">Все группы</option>' +
-                groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+                groups.map(g => `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');
             await loadGroupStudents(groupSelect.value);
         }
     } catch (error) {
@@ -1817,18 +1817,18 @@ function renderIncomeTable(payments) {
             <tr>
                 <td>${date}</td>
                 <td>${createdAt}</td>
-                <td>${p.student_name}</td>
-                <td>${p.group_name || '-'}</td>
-                <td>${p.tariff_name || '-'}</td>
+                <td>${escapeHtml(p.student_name)}</td>
+                <td>${escapeHtml(p.group_name || '-')}</td>
+                <td>${escapeHtml(p.tariff_name || '-')}</td>
                 <td><strong>${p.amount_paid.toLocaleString('ru-RU')} сум</strong></td>
-                <td>${paymentType}</td>
-                <td>${p.notes || '-'}</td>
+                <td>${escapeHtml(paymentType)}</td>
+                <td>${escapeHtml(p.notes || '-')}</td>
                 <td>
                     <button class="btn-small btn-info edit-income-btn" 
                             data-payment-id="${p.id}"
                             data-student-id="${p.student_id || ''}"
                             data-amount="${p.amount_paid}"
-                            data-notes="${p.notes || ''}">
+                            data-notes="${escapeAttr(p.notes || '')}">
                         ${financeEditIcon}
                     </button>
                     <button class="btn-small btn-danger delete-income-btn" 

@@ -1242,39 +1242,7 @@ document.querySelector('.edit-payment-close')?.addEventListener('click', () => {
 });
 
 // Сохранение изменений оплаты
-document.getElementById('editPaymentForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const paymentId = document.getElementById('edit_payment_id').value;
-    const amount = parseFloat(document.getElementById('edit_payment_amount').value);
-    const paymentDate = document.getElementById('edit_payment_date').value;
-    const notes = document.getElementById('edit_payment_notes').value;
-
-    if (!amount || amount <= 0) {
-        alert('Введите корректную сумму');
-        return;
-    }
-
-    try {
-        const resp = await fetch(`/api/payments/${paymentId}/update`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                amount_paid: amount,
-                payment_date: paymentDate,
-                notes: notes
-            })
-        });
-        const data = await resp.json();
-        if (data.success) {
-            alert('Оплата обновлена');
-            location.reload();
-        } else {
-            alert('Ошибка: ' + data.message);
-        }
-    } catch (error) {
-        alert('Ошибка: ' + error.message);
-    }
-});
+// Сохранение правки оплаты обрабатывает students.html (PUT /api/payments/<id>).
 
 // Удаление оплаты из истории платежей (делегирование событий)
 document.addEventListener('click', async (e) => {
