@@ -17305,3 +17305,170 @@ table.stat-table tr.stat-muted td { opacity: .5; }
     align-items: center;
     gap: 10px;
 }
+
+/* --- Вкладка «Награды»: лидеры --- */
+
+.leaders { margin-bottom: 24px; }
+.leaders:empty { display: none; }
+
+.leaders-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.leaders-head h3 { margin: 0; font-size: 17px; }
+
+.leaders-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.leaders-switch {
+    display: inline-flex;
+    padding: 3px;
+    border-radius: 10px;
+    background: #f4f2f0;
+}
+
+#tournamentEntriesModal .leaders-switch button {
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 14px !important;
+    border: 0 !important;
+    border-radius: 8px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #5f6673 !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+}
+
+#tournamentEntriesModal .leaders-switch button.active {
+    background: #fff !important;
+    color: #17191f !important;
+    box-shadow: 0 1px 3px rgba(23, 25, 31, .1) !important;
+}
+
+#tournamentEntriesModal .leaders-all {
+    height: 38px !important;
+    min-height: 38px !important;
+    text-decoration: none;
+}
+
+.leaders-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.leader-card {
+    border: 1px solid #ecebe9;
+    border-radius: 14px;
+    background: #fff;
+    overflow: hidden;
+}
+
+.leader-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 14px;
+    background: linear-gradient(120deg, #1648e6, #2c8cff);
+    color: #fff;
+}
+
+.leader-card-head strong { font-size: 14.5px; }
+
+.leader-card-head a {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .18);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.leader-card-head a:hover { background: rgba(255, 255, 255, .3); }
+.leader-card-head svg { width: 14px; height: 14px; }
+
+.leader-card ol {
+    margin: 0;
+    padding: 6px 0;
+    list-style: none;
+}
+
+.leader-card li {
+    display: grid;
+    grid-template-columns: 20px 38px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 14px;
+}
+
+.leader-card li:nth-child(-n+3) .leader-no { color: #b45f09; }
+
+.leader-no {
+    color: #969ca6;
+    font-size: 12.5px;
+    font-weight: 800;
+    text-align: center;
+}
+
+.leader-photo {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: #e8eefc center / cover no-repeat;
+    color: #1648e6;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.leader-info { display: grid; min-width: 0; }
+
+.leader-info strong {
+    overflow: hidden;
+    font-size: 13.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.leader-info small {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    overflow: hidden;
+    color: #969ca6;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.leader-info small img { width: 14px; height: 14px; object-fit: contain; }
+
+.leader-value {
+    color: #17191f;
+    font-size: 18px;
+    font-weight: 900;
+}
+
+.leader-none { color: #969ca6; font-size: 13px; }
+.leaders-empty { margin: 0; color: #969ca6; font-size: 13.5px; }
+.screen-link { margin-top: 18px; }
+
+@media (max-width: 900px) {
+    .leaders-grid { grid-template-columns: 1fr; }
+}

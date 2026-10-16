@@ -8,7 +8,7 @@
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101711">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101712">
 </head>
 <body>
     {% include '_sidebar.html' %}
@@ -419,14 +419,15 @@
                 </div>
 
                 <div data-entry-panel="players" hidden>
-                    <p class="group-hint">
+                    <div class="tournament-catalog-form-error" id="playersError" hidden></div>
+                    <div id="finalStandings"></div>
+                    <section class="leaders" id="leadersBoard"></section>
+                    <div id="awardsBoard"></div>
+                    <div id="playersBoard"></div>
+                    <p class="group-hint screen-link">
                         <a id="screenLink" href="#" target="_blank" rel="noopener">
                             Открыть табло для экрана на стадионе</a>
                     </p>
-                    <div class="tournament-catalog-form-error" id="playersError" hidden></div>
-                    <div id="finalStandings"></div>
-                    <div id="awardsBoard"></div>
-                    <div id="playersBoard"></div>
                 </div>
             </div>
         </div>
@@ -951,7 +952,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}?v=2026080801"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101710"></script>
+    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101712"></script>
     <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101711"></script>
     <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101703"></script>
 </body>

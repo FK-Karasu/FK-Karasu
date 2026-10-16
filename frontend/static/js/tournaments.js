@@ -2375,6 +2375,75 @@ function playerCellMarkup(row) {
     </span>`;
 }
 
+/* --- Лидеры: бомбардиры, ассистенты, гол+пас, с картинками для соцсетей --- */
+
+const LEADER_COLUMNS = [
+    { key: 'goals', title: 'Бомбардиры', unit: 'голов', image: 'Goals' },
+    { key: 'assists', title: 'Ассистенты', unit: 'передач', image: 'Assists' },
+    { key: 'points', title: 'Гол + пас', unit: 'очков', image: 'Points' },
+];
+
+function leaderImageUrl(kind, limit) {
+    return `/api/tournaments/${catalogState.entriesTournamentId}/leaders.png`
+        + `?age_group=${encodeURIComponent(catalogState.playersAge)}&kind=${kind}&limit=${limit}&download=1`;
+}
+
+function renderLeaders() {
+    const host = byId('leadersBoard');
+    const leaders = catalogState.leaders;
+    if (!host) return;
+    const any = leaders && LEADER_COLUMNS.some((column) => (leaders[column.key] || []).length);
+    if (!any) {
+        host.innerHTML = leaders ? `
+            <header class="leaders-head"><h3>Лидеры</h3></header>
+            <p class="leaders-empty">Появятся, когда в матчах будут указаны авторы голов и передач
+                (на вкладке «Турнир» нажмите на счёт матча).</p>` : '';
+        return;
+    }
+    const limit = catalogState.leadersLimit || 5;
+    host.innerHTML = `
+        <header class="leaders-head">
+            <h3>Лидеры</h3>
+            <div class="leaders-tools">
+                <div class="leaders-switch" role="group" aria-label="Сколько показать">
+                    ${[5, 10].map((value) => `<button type="button" data-leaders-limit="${value}"
+                        class="${value === limit ? 'active' : ''}">Топ-${value}</button>`).join('')}
+                </div>
+                <a class="btn-primary leaders-all" href="${leaderImageUrl('all', 10)}" download>
+                    <i data-lucide="image-down"></i> Картинка: Goals · Assists · Points</a>
+            </div>
+        </header>
+        <div class="leaders-grid">
+            ${LEADER_COLUMNS.map((column) => {
+                const rows = (leaders[column.key] || []).slice(0, limit);
+                return `
+                    <article class="leader-card">
+                        <div class="leader-card-head">
+                            <strong>${escapeHtml(column.title)}</strong>
+                            ${rows.length ? `<a href="${leaderImageUrl(column.key, limit)}" download
+                                title="Скачать картинку «Топ-${limit}. ${escapeHtml(column.title)}»">
+                                <i data-lucide="download"></i> Топ-${limit}</a>` : ''}
+                        </div>
+                        <ol>
+                            ${rows.map((row, index) => `
+                                <li>
+                                    <span class="leader-no">${index + 1}</span>
+                                    <span class="leader-photo"${row.photo_url
+                                        ? ` style="background-image:url('${escapeHtml(row.photo_url)}')"` : ''}>${row.photo_url
+                                        ? '' : escapeHtml(initials(row.name))}</span>
+                                    <span class="leader-info">
+                                        <strong>${escapeHtml(row.name)}</strong>
+                                        <small>${row.team_logo_url ? `<img src="${escapeHtml(row.team_logo_url)}" alt="">` : ''}${escapeHtml(row.team_name)}</small>
+                                    </span>
+                                    <b class="leader-value" title="${escapeHtml(column.unit)}">${row.value}</b>
+                                </li>`).join('') || '<li class="leader-none">пока никого</li>'}
+                        </ol>
+                    </article>`;
+            }).join('')}
+        </div>`;
+    refreshIcons();
+}
+
 function renderPlayers() {
     const board = byId('playersBoard');
     const stats = catalogState.playersStats;
@@ -2391,12 +2460,6 @@ function renderPlayers() {
     }
 
     board.innerHTML = [
-        statTableMarkup('Бомбардиры',
-            ['#', 'Игрок', 'Голы', 'С пенальти', 'Ассисты', 'Матчи'],
-            stats.scorers.map((row, index) => `
-                <tr><td>${index + 1}</td><td>${playerCellMarkup(row)}</td>
-                    <td><strong>${row.goals}</strong></td><td>${row.penalty_goals}</td>
-                    <td>${row.assists}</td><td>${row.matches}</td></tr>`)),
         statTableMarkup('Вратари',
             ['#', 'Вратарь', 'Матчи', 'Пропущено', 'В среднем', 'Сухие матчи'],
             stats.goalkeepers.map((row, index) => `
@@ -2485,6 +2548,8 @@ async function loadPlayers() {
     if (!catalogState.playersAge) {
         catalogState.playersStats = null;
         catalogState.playersAwards = [];
+        catalogState.leaders = null;
+        renderLeaders();
         renderPlayers();
         renderAwards();
         return;
@@ -2497,6 +2562,8 @@ async function loadPlayers() {
         );
         catalogState.playersStats = data.stats;
         catalogState.playersAwards = data.awards || [];
+        catalogState.leaders = data.leaders || null;
+        renderLeaders();
         renderPlayers();
         renderAwards();
     } catch (error) {
@@ -2945,6 +3012,12 @@ function bindEvents() {
         if (select) setTiebreak(select.value);
     });
     byId('runScheduleBtn').addEventListener('click', () => runSchedule().catch(showPageError));
+    byId('leadersBoard').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-leaders-limit]');
+        if (!button) return;
+        catalogState.leadersLimit = Number(button.dataset.leadersLimit);
+        renderLeaders();
+    });
     byId('awardsBoard').addEventListener('change', (event) => {
         const select = event.target.closest('[data-award-select]');
         if (!select) return;

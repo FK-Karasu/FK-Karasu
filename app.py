@@ -8026,8 +8026,114 @@ def tournament_players_api(tournament_id):
         'success': True,
         'age_group': age_group,
         'stats': stats,
+        'leaders': {kind: leader_rows(stats, kind, 10) for kind in LEADER_KINDS},
         'awards': serialize_awards(tournament, age_group, stats),
     })
+
+
+# ===== ЛИДЕРЫ: бомбардиры, ассистенты, гол+пас =====
+
+LEADER_KINDS = {
+    'goals': ('БОМБАРДИРЫ', 'Goals'),
+    'assists': ('АССИСТЕНТЫ', 'Assists'),
+    'points': ('ГОЛ + ПАС', 'Points'),
+}
+MONTHS_NOMINATIVE = ['ЯНВАРЬ', 'ФЕВРАЛЬ', 'МАРТ', 'АПРЕЛЬ', 'МАЙ', 'ИЮНЬ', 'ИЮЛЬ',
+                     'АВГУСТ', 'СЕНТЯБРЬ', 'ОКТЯБРЬ', 'НОЯБРЬ', 'ДЕКАБРЬ']
+
+
+def leader_rows(stats, kind, limit):
+    """Топ по голам, передачам или очкам (гол + пас). При равенстве — у кого больше голов,
+    потом меньше матчей, потом по алфавиту."""
+    rows = []
+    for row in stats['scorers']:
+        goals, assists = row.get('goals', 0), row.get('assists', 0)
+        value = {'goals': goals, 'assists': assists, 'points': goals + assists}[kind]
+        if value <= 0:
+            continue
+        rows.append({**row, 'value': value})
+    secondary = {'goals': 'assists', 'assists': 'goals', 'points': 'goals'}[kind]
+    rows.sort(key=lambda r: (-r['value'], -r.get(secondary, 0), r.get('matches') or 99, r['name']))
+    return rows[:limit]
+
+
+def leader_short_name(full_name):
+    """«Норкулов Бунёд» → «НОРКУЛОВ Б.» для компактных строк."""
+    parts = (full_name or '').split()
+    if len(parts) >= 2:
+        return f'{parts[0]} {parts[1][0]}.'
+    return full_name or ''
+
+
+def leader_display_name(member):
+    """Для крупной строки — «Имя Фамилия», как на афишах."""
+    if not member:
+        return ''
+    return ' '.join(filter(None, [member.first_name, member.last_name]))
+
+
+@app.route('/api/tournaments/<int:tournament_id>/leaders.png')
+@login_required
+def tournament_leaders_image(tournament_id):
+    """Картинка для соцсетей: топ-5/10 одной колонкой или «Лучшие игроки» в три столбика."""
+    from backend.services import leader_cards
+    ensure_tournament_tables()
+    if not has_tournament_permission('view'):
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    tournament = Tournament.query.filter_by(id=tournament_id).first_or_404()
+    age_group = request_age_group(tournament, request.args.get('age_group'))
+    if not age_group:
+        return jsonify({'success': False, 'message': 'Выберите возрастную категорию турнира'}), 400
+    kind = request.args.get('kind') or 'goals'
+    try:
+        limit = 10 if int(request.args.get('limit') or 5) >= 10 else 5
+    except (TypeError, ValueError):
+        limit = 5
+    if kind not in LEADER_KINDS and kind != 'all':
+        return jsonify({'success': False, 'message': 'Неизвестный список'}), 400
+
+    stats = collect_player_stats(tournament, age_group)
+    members = {}
+    teams = {}
+
+    def card(row):
+        member = members.get(row['member_id'])
+        if member is None:
+            member = members[row['member_id']] = db.session.get(TournamentTeamMember, row['member_id'])
+        team = member.team if member else None
+        if team and team.id not in teams:
+            teams[team.id] = cover_local_image(team.logo_path)
+        return {
+            'name': leader_display_name(member) or row['name'],
+            'short': leader_short_name(row['name']),
+            'team': row.get('team_name') or (team.name if team else ''),
+            'value': row['value'],
+            'photo': cover_local_image(member.photo_path) if member else None,
+            'logo': teams.get(team.id) if team else None,
+        }
+
+    start = tournament.start_date or get_local_date()
+    eyebrow = (age_group.upper(), f'{MONTHS_NOMINATIVE[start.month - 1]}-{start.year}')
+    fonts = leader_cards.Fonts(
+        os.path.join(basedir, 'frontend', 'static', 'vendor', 'onest-ttf', 'Unbounded.ttf'),
+        COVER_FONT_PATH,
+    )
+    if kind == 'all':
+        columns = [(LEADER_KINDS[key][1], [card(row) for row in leader_rows(stats, key, 10)])
+                   for key in ('goals', 'assists', 'points')]
+        image = leader_cards.render_columns(fonts, eyebrow, 'ЛУЧШИЕ ИГРОКИ', columns)
+        filename = f'luchshie-igroki-{age_group}.png'
+    else:
+        rows = [card(row) for row in leader_rows(stats, kind, limit)]
+        if not rows:
+            return jsonify({'success': False, 'message': 'Пока нет данных — внесите голы в протоколы'}), 404
+        image = leader_cards.render_top_list(fonts, eyebrow, f'ТОП-{limit}. {LEADER_KINDS[kind][0]}', rows)
+        filename = f'top-{limit}-{kind}-{age_group}.png'
+    buffer = io.BytesIO()
+    image.save(buffer, format='PNG', optimize=True)
+    buffer.seek(0)
+    return send_file(buffer, mimetype='image/png', as_attachment=request.args.get('download') == '1',
+                     download_name=filename.replace(' ', '_'))
 
 
 @app.route('/api/tournaments/<int:tournament_id>/awards', methods=['PUT'])
