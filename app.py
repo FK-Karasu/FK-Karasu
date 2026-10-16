@@ -2832,6 +2832,7 @@ SERVICE_LOCK_BYPASS_PATH_PREFIXES = (
     '/manifest.webmanifest',
     '/sw.js',
     '/tournaments-afisha',
+    '/event',
     '/api/public/tournaments',
     '/api/service-control/state',
     '/api/telegram/service-control/status',
@@ -2844,6 +2845,101 @@ SERVICE_LOCK_BYPASS_PATH_PREFIXES = (
 SERVICE_LOCK_BLOCKED_GET_PATHS = {
     '/video_feed'
 }
+
+
+# ===== ПРЕЗЕНТАЦИОННАЯ СТРАНИЦА (event.karasu.uz) =====
+#
+# Контент лежит в backend/data/event_page.json: тексты, цены, фото. Позже его
+# будет править конструктор — шаблон берёт всё только оттуда.
+
+EVENT_PAGE_PATH = os.path.join(basedir, 'backend', 'data', 'event_page.json')
+EVENT_HOST_PREFIX = 'event.'
+_event_page_cache = {'mtime': None, 'data': None}
+
+
+def load_event_page():
+    mtime = os.path.getmtime(EVENT_PAGE_PATH)
+    if _event_page_cache['mtime'] != mtime:
+        with open(EVENT_PAGE_PATH, encoding='utf-8') as handle:
+            _event_page_cache['data'] = json.load(handle)
+        _event_page_cache['mtime'] = mtime
+    return _event_page_cache['data']
+
+
+def is_event_host():
+    return (request.host or '').lower().startswith(EVENT_HOST_PREFIX)
+
+
+def main_site_url():
+    """Ссылки на афишу с поддомена ведут на основной сайт."""
+    if not is_event_host():
+        return ''
+    return f"{request.scheme}://{request.host[len(EVENT_HOST_PREFIX):]}"
+
+
+def event_tournament_cards(limit=6):
+    ensure_tournament_tables()
+    today = get_local_date()
+    months = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+    cards = []
+    items = Tournament.query.filter(
+        Tournament.is_published.is_(True),
+        Tournament.start_date.isnot(None),
+    ).order_by(Tournament.start_date.asc()).all()
+    for tournament in items:
+        finish = tournament.end_date or tournament.start_date
+        if finish < today:
+            continue
+        start = tournament.start_date
+        if finish and finish != start:
+            dates = f'{start.day} {months[start.month - 1]} — {finish.day} {months[finish.month - 1]} {finish.year}'
+        else:
+            dates = f'{start.day} {months[start.month - 1]} {start.year}'
+        cards.append({
+            'name': tournament.name,
+            'dates': dates,
+            'location': tournament.location,
+            'poster_url': get_tournament_media_url(tournament.poster_path),
+            'age_groups': tournament_age_group_labels(tournament),
+            'teams_count': TournamentEntry.query.filter_by(
+                tournament_id=tournament.id, status=TournamentEntry.STATUS_CONFIRMED).count(),
+        })
+        if len(cards) >= limit:
+            break
+    return cards
+
+
+def render_event_page():
+    try:
+        tournaments = event_tournament_cards()
+    except Exception as error:
+        print(f'Турниры для event-страницы не загрузились: {error}')
+        tournaments = []
+    return render_template(
+        'event.html',
+        page=load_event_page(),
+        tournaments=tournaments,
+        main_site_url=main_site_url(),
+        year=get_local_date().year,
+    )
+
+
+@app.route('/event')
+def event_page():
+    return render_event_page()
+
+
+@app.before_request
+def serve_event_host():
+    """На event.karasu.uz — только презентация и её статика, остальное — на основной сайт."""
+    if not is_event_host():
+        return None
+    path = request.path or '/'
+    if path in ('/', '/event'):
+        return render_event_page()
+    if path.startswith('/static/') or path in ('/favicon.ico', '/robots.txt'):
+        return None
+    return redirect(f'{main_site_url()}{request.full_path.rstrip("?")}', code=302)
 
 
 @app.before_request
