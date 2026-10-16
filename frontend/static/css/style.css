@@ -17170,3 +17170,17 @@ table.stat-table tr.stat-muted td { opacity: .5; }
     font-weight: 500 !important;
     text-align: left;
 }
+
+.placement-offer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 1px dashed #ffb066;
+    border-radius: 12px;
+    background: #fffaf3;
+    color: #5f6673;
+    font-size: 13.5px;
+}

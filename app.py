@@ -7162,6 +7162,49 @@ def tournament_place_api(tournament_id):
     return jsonify({'success': True, **outcome})
 
 
+@app.route('/api/tournaments/<int:tournament_id>/placement', methods=['POST'])
+@login_required
+def tournament_placement_api(tournament_id):
+    """Включить или выключить матчи за 5-е и следующие места — без пересборки турнира.
+
+    Группы и сетка не трогаются, поэтому так можно и в идущем турнире.
+    Нельзя только переделать уже сыгранные матчи за места.
+    """
+    ensure_tournament_tables()
+    if not has_tournament_permission('edit'):
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    tournament = Tournament.query.filter_by(id=tournament_id).first_or_404()
+    data = request.get_json() or {}
+    age_group = request_age_group(tournament, data.get('age_group'))
+    if not age_group:
+        return jsonify({'success': False, 'message': 'Выберите возрастную категорию турнира'}), 400
+    settings = category_settings(tournament, age_group)
+    if settings['format'] != tournament_engine.FORMAT_GROUPS_PLAYOFF:
+        return jsonify({'success': False, 'message': 'Матчи за места бывают только в формате «Группы + плей-офф»'}), 400
+    if category_has_results(tournament.id, age_group, TournamentMatch.STAGE_PLACEMENT):
+        return jsonify({'success': False, 'message': 'Матчи за места уже идут — их не пересоздать'}), 409
+
+    enabled = bool(data.get('enabled', True))
+    settings = save_category_settings(tournament, age_group, {**settings, 'placement': enabled})
+    created = 0
+    if enabled:
+        groups = category_groups(tournament.id, age_group)
+        entries = confirmed_entries(tournament.id, age_group)
+        if not groups:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': 'Сначала соберите группы'}), 400
+        created = build_placement_matches(tournament, age_group, settings, groups, entries)
+        try:
+            sync_playoff(tournament.id, age_group, settings)
+        except TournamentConflict as error:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': str(error)}), 409
+    else:
+        delete_category_matches(tournament.id, age_group, TournamentMatch.STAGE_PLACEMENT)
+    db.session.commit()
+    return jsonify({'success': True, 'created': created})
+
+
 @app.route('/api/tournaments/<int:tournament_id>/reset', methods=['POST'])
 @login_required
 def tournament_reset_api(tournament_id):

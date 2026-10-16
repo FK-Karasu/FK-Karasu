@@ -282,10 +282,18 @@
         const matches = data.playoff || [];
         const placement = data.placement || [];
         wrap.hidden = !matches.length && !placement.length;
+        // Кнопка «Добавить матчи за места» показывается вместе с сеткой.
+        const canAddPlacement = data.settings.format === 'groups_playoff' && data.groups.length
+            && data.built && !placement.length;
         byId('boardPlacement').innerHTML = placement.length ? `
             <p class="bk-round-title">Матчи за места</p>
             <div class="bk-placement-list">${placement.map((match) => `
-                <div class="bk-slot">${bracketMatchMarkup(match, match.label)}</div>`).join('')}</div>` : '';
+                <div class="bk-slot">${bracketMatchMarkup(match, match.label)}</div>`).join('')}</div>`
+            : canAddPlacement ? `
+            <div class="placement-offer">
+                <span>Команды, не вышедшие из групп, могут доиграть за 5-е и следующие места.</span>
+                <button type="button" class="btn-secondary" data-add-placement>Добавить матчи за места</button>
+            </div>` : '';
         if (!matches.length) {
             byId('boardBracket').innerHTML = '';
             byId('boardResults').innerHTML = '';
@@ -637,15 +645,16 @@
         if (!data) return;
         try {
             showFormError('boardError');
-            await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/format`, {
-                method: 'PUT',
-                body: JSON.stringify({ age_group: catalogState.age, settings: { ...data.settings, placement: enabled } }),
-            });
-            // Календарь уже есть — пересобираем по тем же ячейкам, чтобы матчи за места появились или исчезли.
-            if (data.built) {
-                await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/build`, {
+            if (data.groups.length) {
+                // Группы уже есть — добавляем или убираем только матчи за места, турнир не пересобираем.
+                await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/placement`, {
                     method: 'POST',
-                    body: JSON.stringify({ age_group: catalogState.age, draw: false }),
+                    body: JSON.stringify({ age_group: catalogState.age, enabled }),
+                });
+            } else {
+                await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/format`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ age_group: catalogState.age, settings: { ...data.settings, placement: enabled } }),
                 });
             }
             await loadCategory();
@@ -704,8 +713,12 @@
         const placementBox = byId('boardPlacementField');
         placementBox.hidden = data.settings.format !== 'groups_playoff';
         const placementInput = placementBox.querySelector('input');
-        placementInput.checked = data.settings.placement !== false;
-        placementInput.disabled = locked;
+        const placementPlayed = (data.placement || []).some((match) => match.is_played);
+        // Галочка отражает, есть ли матчи за места на самом деле (в турнирах, собранных раньше, их нет).
+        placementInput.checked = data.groups.length && data.built
+            ? (data.placement || []).length > 0
+            : data.settings.placement !== false;
+        placementInput.disabled = placementPlayed;
         byId('boardDrawBtn').querySelector('span').textContent = data.built ? 'Новая жеребьёвка' : 'Жеребьёвка';
         renderGroupsBoard(data);
         renderBracket(data);
@@ -721,6 +734,9 @@
         });
         byId('boardDrawBtn').addEventListener('click', () => build(true));
         byId('boardPlacementField').addEventListener('change', (event) => togglePlacement(event.target.checked));
+        byId('boardPlacement').addEventListener('click', (event) => {
+            if (event.target.closest('[data-add-placement]')) togglePlacement(true);
+        });
         byId('boardBuildBtn').addEventListener('click', () => build(false));
         byId('boardScheduleBtn').addEventListener('click', openScheduleDialog);
         byId('boardResetBtn').addEventListener('click', () => resetCategory().catch(showPageError));
