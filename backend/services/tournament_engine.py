@@ -7,6 +7,7 @@
 import itertools
 import math
 import random
+import re
 from datetime import datetime, timedelta
 
 
@@ -156,6 +157,41 @@ def describe_plan(team_count, settings):
         'playoff_matches': playoff_matches,
         'total_matches': group_matches + playoff_matches,
     }
+
+
+# ===== ВОЗРАСТ КАТЕГОРИИ =====
+
+_YEAR = re.compile(r'(?<!\d)(19[5-9]\d|20\d\d)(?!\d)')
+
+
+def category_years(label):
+    """Годы рождения категории по её подписи.
+
+    «2015» → (2015, 2015); «2010-2011 B» → (2010, 2011); «2012/2013» → (2012, 2013).
+    Подписи без года («U-12», «Девочки») возраст не ограничивают → None.
+    Буквы A/B — это уровень команды, на возраст они не влияют.
+    """
+    years = [int(value) for value in _YEAR.findall(str(label or ''))]
+    if not years:
+        return None
+    return min(years), max(years)
+
+
+def birth_year_fits(birth_year, label, allow_play_up=False):
+    """Подходит ли год рождения категории.
+
+    allow_play_up — младшим можно играть за старших (родившимся позже),
+    но не наоборот: старший за младших — нарушение.
+    """
+    span = category_years(label)
+    if span is None:
+        return True
+    if birth_year is None:
+        return False
+    low, high = span
+    if low <= birth_year <= high:
+        return True
+    return bool(allow_play_up and birth_year > high)
 
 
 # ===== КРУГОВАЯ СИСТЕМА =====

@@ -877,6 +877,34 @@ class TournamentEntry(db.Model):
         return f'<TournamentEntry t={self.tournament_id} team={self.team_id} {self.age_group}>'
 
 
+class TournamentEntryPlayer(db.Model):
+    """В какой категории турнира играет игрок клуба.
+
+    Состав клуба один (TournamentTeamMember), а заявок у клуба в турнире может
+    быть несколько: «2010-2011 A», «2010-2011 B», «2012-2013 A». Эта таблица
+    раскладывает игроков по заявкам. Один игрок — одна категория на турнир.
+    entry_id = NULL значит «организатор сам снял игрока»: автораспределение
+    такого игрока больше не трогает.
+    """
+    __tablename__ = 'tournament_entry_players'
+    __table_args__ = (
+        db.UniqueConstraint('tournament_id', 'member_id', name='uq_tournament_entry_player'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    tournament_id = db.Column(db.Integer, db.ForeignKey('tournaments.id'), nullable=False, index=True)
+    entry_id = db.Column(db.Integer, db.ForeignKey('tournament_entries.id'), nullable=True, index=True)
+    member_id = db.Column(db.Integer, db.ForeignKey('tournament_team_members.id'), nullable=False, index=True)
+    is_auto = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, default=get_local_datetime)
+
+    entry = db.relationship('TournamentEntry', foreign_keys=[entry_id])
+    member = db.relationship('TournamentTeamMember', foreign_keys=[member_id])
+
+    def __repr__(self):
+        return f'<TournamentEntryPlayer entry={self.entry_id} member={self.member_id}>'
+
+
 class TournamentTeamShareLink(db.Model):
     """Ссылка, по которой тренер сам заполняет состав своей команды.
 

@@ -8,7 +8,7 @@
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101605">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101607">
 </head>
 <body>
     {% include '_sidebar.html' %}
@@ -370,17 +370,21 @@
                         </div>
                         <div class="team-picker-list" id="entryTeamList" role="listbox" hidden></div>
                     </div>
-                    <label class="tournament-catalog-field">
-                        <span>Возрастная категория</span>
-                        <select id="entryAgeSelect"><option value="">Выберите категорию</option></select>
-                    </label>
+                    <div class="tournament-catalog-field entry-age-field">
+                        <span>В какие категории</span>
+                        <div class="entry-age-chips" id="entryAgeChips" role="group"
+                            aria-label="Категории для заявки"></div>
+                    </div>
                     <button class="btn-primary" type="button" id="addEntryBtn">
                         <i data-lucide="plus"></i>
                         Заявить
                     </button>
                 </div>
                 <div class="tournament-catalog-form-error" id="entryFormError" hidden></div>
-                <p class="group-hint">В турнире играют только команды со статусом «Подтвердила».</p>
+                <p class="scheme-success entry-notice" id="entryNotice" hidden></p>
+                <p class="group-hint">Один клуб можно заявить сразу в несколько категорий — отметьте их галочками.
+                    Играют только команды со статусом «Подтвердила». Кнопка в колонке «Состав» — кто из игроков
+                    клуба играет в этой категории.</p>
 
                 <div id="entriesList">
                     <div class="tournament-catalog-empty">Загрузка заявок…</div>
@@ -511,6 +515,43 @@
                     <div id="awardsBoard"></div>
                     <div id="playersBoard"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal tournament-catalog-modal" id="rosterModal" hidden>
+        <div class="modal-content roster-modal-content">
+            <header class="tournament-catalog-modal-header">
+                <div>
+                    <span class="tournament-catalog-eyebrow">Состав по категориям</span>
+                    <h2 id="rosterTitle">Команда</h2>
+                </div>
+                <button class="icon-button" type="button" data-close-modal="rosterModal" aria-label="Закрыть">
+                    <i data-lucide="x"></i>
+                </button>
+            </header>
+            <div class="team-details-body">
+                <p class="roster-intro">Игроки клуба один раз заводятся в карточке команды, а здесь раскладываются
+                    по категориям турнира. Кому по году рождения подходит одна категория — система ставит сама
+                    (метка «авто»). Если подходят две, например A и B одного возраста, выберите вы.</p>
+                <div class="roster-summary" id="rosterSummary"></div>
+                <div class="roster-toolbar">
+                    <label class="tournament-publish-toggle" id="rosterPlayUpField">
+                        <input id="rosterPlayUp" type="checkbox">
+                        <span>
+                            <strong>Младшие могут играть за старших</strong>
+                            <small>Игрок 2012 г.р. сможет выйти в категории 2010-2011. Наоборот нельзя никогда.
+                                Правило действует на весь турнир.</small>
+                        </span>
+                    </label>
+                    <button class="btn-secondary" type="button" id="rosterOpenTeam">
+                        <i data-lucide="user-round-plus"></i>
+                        Игроки клуба
+                    </button>
+                </div>
+                <div class="tournament-catalog-form-error" id="rosterError" hidden></div>
+                <div class="roster-board" id="rosterBoard"></div>
+                <p class="group-hint" id="rosterDeclined" hidden></p>
             </div>
         </div>
     </div>
@@ -1003,7 +1044,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}?v=2026080801"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101601"></script>
-    <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101603"></script>
+    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101603"></script>
+    <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101604"></script>
 </body>
 </html>

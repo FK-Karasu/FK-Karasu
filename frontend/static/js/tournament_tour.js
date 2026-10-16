@@ -13,6 +13,11 @@
     const firstTeamId = () => catalogState.teams[0]?.id || null;
     const hasTournament = () => Boolean(firstTournamentId());
     const hasTeam = () => Boolean(firstTeamId());
+    const firstEntryTeamId = () => (catalogState.entries || [])
+        .find((entry) => entry.status !== 'declined')?.team_id || null;
+    // Заявки грузятся при открытии турнира, поэтому до этого смотрим просто на наличие турнира.
+    const hasEntry = () => hasTournament() && (byId('tournamentEntriesModal').hidden
+        ? true : Boolean(firstEntryTeamId()));
 
     function playedMatchId() {
         const data = catalogState.overview;
@@ -38,6 +43,7 @@
         teamShareModal: () => openTeamShare(firstTeamId()),
         tournamentEntriesModal: () => openTournamentEntries(firstTournamentId()),
         scheduleModal: () => openScheduleDialog(),
+        rosterModal: () => (firstEntryTeamId() ? openRoster(firstEntryTeamId()) : null),
         matchProtocolModal: () => openProtocol(playedMatchId()),
         postStudioModal: () => openStudio({ age_group: catalogState.age }),
     };
@@ -372,11 +378,12 @@
                 },
                 {
                     requires: hasTournament,
-                    target: field('#entryAgeSelect'),
+                    target: '#entryAgeChips',
                     modals: WORKSPACE,
                     entryTab: 'entries',
-                    title: 'Категория заявки',
-                    text: 'В какую возрастную категорию заявляются команды. По умолчанию — открытая сейчас.',
+                    title: 'В какие категории',
+                    text: 'Отметьте галочками все категории, где клуб играет, — например, 2010-2011 A, '
+                        + '2010-2011 B и 2012-2013 A. Заявки создадутся одним нажатием.',
                 },
                 {
                     requires: hasTournament,
@@ -395,6 +402,16 @@
                     title: 'Статус: «Подтвердила»',
                     text: 'Играют <b>только подтвердившие</b> команды. Когда клуб дал согласие — '
                         + 'поменяйте статус. Отказавшиеся в жеребьёвку не попадут.',
+                },
+                {
+                    requires: hasTournament,
+                    target: '#entriesList [data-roster-team]',
+                    modals: WORKSPACE,
+                    entryTab: 'entries',
+                    optional: true,
+                    title: 'Состав заявки',
+                    text: 'Сколько игроков клуба играет в этой категории. Оранжевая метка «ждут распределения» — '
+                        + 'нажмите и разложите игроков (подробно — в главе «Состав по категориям»).',
                 },
                 {
                     requires: hasTournament,
@@ -519,6 +536,70 @@
                     title: 'Табло для стадиона',
                     text: 'Откройте на телевизоре или проекторе — таблицы, сетка и бомбардиры будут '
                         + 'сменяться сами.',
+                },
+            ],
+        },
+        {
+            key: 'roster',
+            title: 'Состав по категориям',
+            icon: 'users-round',
+            steps: [
+                {
+                    requires: () => !hasEntry(),
+                    title: 'Сначала заявите команду',
+                    text: 'Состав по категориям открывается у заявленной команды. Заявите клуб в турнир '
+                        + 'и пройдите эту главу снова.',
+                },
+                {
+                    requires: hasEntry,
+                    target: '#rosterSummary',
+                    modals: [...WORKSPACE, 'rosterModal'],
+                    title: 'Зачем это окно',
+                    text: 'Игроки клуба заводятся один раз, а играть могут в разных категориях. '
+                        + 'Здесь видно, кто где играет, и сколько игроков ещё ждут решения.',
+                },
+                {
+                    requires: hasEntry,
+                    target: '#rosterBoard .roster-column.free',
+                    modals: [...WORKSPACE, 'rosterModal'],
+                    title: 'Не распределены',
+                    text: 'Сюда попадают игроки, которым подходят две категории (A и B одного возраста). '
+                        + 'Внизу — те, кто не подходит никуда: нет даты рождения или не тот возраст.',
+                },
+                {
+                    requires: hasEntry,
+                    target: '#rosterBoard .roster-column:not(.free)',
+                    modals: [...WORKSPACE, 'rosterModal'],
+                    title: 'Колонка категории',
+                    text: 'Игроки этой заявки. Если по году рождения подходит одна категория, система ставит '
+                        + 'игрока сама — у него метка <b>«авто»</b>.',
+                },
+                {
+                    requires: hasEntry,
+                    target: '#rosterBoard .roster-player',
+                    fallback: '#rosterBoard',
+                    modals: [...WORKSPACE, 'rosterModal'],
+                    title: 'Как перенести игрока',
+                    text: 'Перетащите карточку мышью в нужную колонку (на телефоне — удержите палец) '
+                        + 'или выберите категорию в списке на карточке. Куда нельзя по возрасту, '
+                        + 'колонка подсветится красным.',
+                    tip: 'Один игрок — одна категория. Кто уже сыграл матч, перенести нельзя.',
+                },
+                {
+                    requires: hasEntry,
+                    target: '#rosterPlayUpField',
+                    modals: [...WORKSPACE, 'rosterModal'],
+                    title: 'Младшие за старших',
+                    text: 'Если по регламенту младшим можно играть за старших, включите это правило: '
+                        + 'игрок 2012 г.р. сможет выйти за 2010-2011. Старшим за младших — нельзя никогда.',
+                },
+                {
+                    requires: hasEntry,
+                    target: '#rosterOpenTeam',
+                    modals: [...WORKSPACE, 'rosterModal'],
+                    title: 'Добавить игроков',
+                    text: 'Нет нужного игрока? Откройте состав клуба и добавьте его — '
+                        + 'он сразу появится здесь.',
                 },
             ],
         },
@@ -755,6 +836,7 @@
         memberModal: 'team',
         teamShareModal: 'team',
         scheduleModal: 'schedule',
+        rosterModal: 'roster',
         matchProtocolModal: 'protocol',
         postStudioModal: 'studio',
         tournamentEntriesModal: 'manage',

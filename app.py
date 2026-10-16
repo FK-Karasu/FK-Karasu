@@ -73,7 +73,7 @@ os.environ['FFMPEG_LOG_LEVEL'] = 'quiet'
 # Форсируем использование CUDA/TensorRT в ONNX
 os.environ['ORT_TENSORRT_FP16_ENABLE'] = '1'
 
-from backend.models.models import db, User, Student, Payment, Attendance, AccessLog, Expense, Group, GroupTrainer, Tariff, ClubSettings, RewardType, StudentReward, CashTransfer, Role, RolePermission, CardType, StudentCard, Tournament, TournamentTeamCatalog, TournamentTeamMember, TournamentStadium, TournamentTeamShareLink, TournamentEntry, TournamentGroup, TournamentMatch, TournamentMatchAppearance, TournamentMatchEvent, TournamentAward, DeviceCommand, BridgeStatus, TerminalFaceState, StudentLog
+from backend.models.models import db, User, Student, Payment, Attendance, AccessLog, Expense, Group, GroupTrainer, Tariff, ClubSettings, RewardType, StudentReward, CashTransfer, Role, RolePermission, CardType, StudentCard, Tournament, TournamentTeamCatalog, TournamentTeamMember, TournamentStadium, TournamentTeamShareLink, TournamentEntry, TournamentGroup, TournamentMatch, TournamentMatchAppearance, TournamentMatchEvent, TournamentAward, TournamentEntryPlayer, DeviceCommand, BridgeStatus, TerminalFaceState, StudentLog
 # Live camera recognition stays disabled; access-log verification is separate.
 USE_FACE = False
 from backend.services.face_stub import DummyFaceService as FaceService
@@ -1701,6 +1701,7 @@ def ensure_tournament_tables():
             'tournament_match_appearances',
             'tournament_match_events',
             'tournament_awards',
+            'tournament_entry_players',
         }
         if not required.issubset(set(tables)):
             db.create_all()
@@ -5284,6 +5285,7 @@ def tournament_detail_api(tournament_id):
         # Внешние ключи в PostgreSQL не дают удалить турнир, пока живы его матчи и заявки.
         delete_matches(TournamentMatch.query.filter_by(tournament_id=tournament.id).all())
         TournamentAward.query.filter_by(tournament_id=tournament.id).delete(synchronize_session=False)
+        TournamentEntryPlayer.query.filter_by(tournament_id=tournament.id).delete(synchronize_session=False)
         TournamentEntry.query.filter_by(tournament_id=tournament.id).delete(synchronize_session=False)
         TournamentGroup.query.filter_by(tournament_id=tournament.id).delete(synchronize_session=False)
         TournamentTeamShareLink.query.filter_by(tournament_id=tournament.id).delete(synchronize_session=False)
@@ -5498,6 +5500,7 @@ def tournament_team_member_detail_api(member_id):
             return jsonify({'success': False, 'message':
                             'Игрок есть в протоколах матчей — удалить его нельзя.'}), 409
         TournamentAward.query.filter_by(member_id=member.id).delete(synchronize_session=False)
+        TournamentEntryPlayer.query.filter_by(member_id=member.id).delete(synchronize_session=False)
         photo_path = member.photo_path
         db.session.delete(member)
         db.session.commit()
@@ -5575,17 +5578,39 @@ def tournament_entries_api(tournament_id):
         entries = TournamentEntry.query.filter_by(tournament_id=tournament_id).all()
         # Сортируем по категории, затем по названию команды — так удобнее читать список.
         entries.sort(key=lambda item: (item.age_group, (item.team.name if item.team else '')))
+        changed = False
+        for team_id in {entry.team_id for entry in entries}:
+            changed = auto_assign_roster(tournament, team_id) or changed
+        if changed:
+            db.session.commit()
+        stats = roster_stats(tournament)
+        payload = []
+        for entry in entries:
+            row = serialize_tournament_entry(entry)
+            row['roster_count'] = stats['by_entry'].get(entry.id, 0)
+            row['team_unassigned'] = stats['unassigned_by_team'].get(entry.team_id, 0)
+            row['roster_used'] = entry.team_id in stats['teams_with_roster']
+            payload.append(row)
         return jsonify({
             'success': True,
             'age_groups': tournament_age_group_labels(tournament),
-            'entries': [serialize_tournament_entry(entry) for entry in entries],
+            'entries': payload,
+            'rules': tournament_rules(tournament),
         })
 
     if not has_tournament_permission('edit'):
         return jsonify({'success': False, 'message': 'Нет доступа'}), 403
 
     data = request.get_json() or {}
-    age_group = (data.get('age_group') or '').strip()
+    # Категорий тоже может быть несколько: клуб часто заявляет сразу 2–3 возраста.
+    raw_ages = data.get('age_groups')
+    if not isinstance(raw_ages, list):
+        raw_ages = [data.get('age_group')]
+    age_groups = []
+    for value in raw_ages:
+        label = (value or '').strip()
+        if label and label not in age_groups:
+            age_groups.append(label)
 
     # Команд может прийти сразу несколько: заявлять по одной неудобно.
     raw_ids = data.get('team_ids')
@@ -5603,48 +5628,52 @@ def tournament_entries_api(tournament_id):
         return jsonify({'success': False, 'message': 'Выберите команду'}), 400
 
     allowed = tournament_age_group_labels(tournament)
-    if not age_group:
+    if not age_groups:
         return jsonify({'success': False, 'message': 'Выберите возрастную категорию'}), 400
-    if allowed and age_group not in allowed:
+    if allowed and any(age not in allowed for age in age_groups):
         return jsonify({'success': False, 'message': 'Выберите возрастную категорию турнира'}), 400
 
     status = data.get('status') if data.get('status') in ENTRY_STATUSES else TournamentEntry.STATUS_INVITED
     note = (data.get('note') or '').strip() or None
     already = {
-        entry.team_id for entry in TournamentEntry.query.filter_by(
-            tournament_id=tournament_id, age_group=age_group,
+        (entry.team_id, entry.age_group) for entry in TournamentEntry.query.filter_by(
+            tournament_id=tournament_id,
         ).all()
     }
 
     added, skipped, missing = [], [], 0
+    touched_teams = set()
     for team_id in team_ids:
         team = db.session.get(TournamentTeamCatalog, team_id)
         if not team:
             missing += 1
             continue
-        if team.id in already:
-            skipped.append(team.name)
-            continue
-        db.session.add(TournamentEntry(
-            tournament_id=tournament_id,
-            team_id=team.id,
-            age_group=age_group,
-            status=status,
-            note=note,
-            created_by=current_user.id,
-        ))
-        already.add(team.id)
-        added.append(team.name)
+        for age_group in age_groups:
+            if (team.id, age_group) in already:
+                skipped.append(f'{team.name} · {age_group}')
+                continue
+            db.session.add(TournamentEntry(
+                tournament_id=tournament_id,
+                team_id=team.id,
+                age_group=age_group,
+                status=status,
+                note=note,
+                created_by=current_user.id,
+            ))
+            already.add((team.id, age_group))
+            added.append(f'{team.name} · {age_group}')
+            touched_teams.add(team.id)
 
     if not added:
         if skipped:
             names = ', '.join(f'«{name}»' for name in skipped)
-            return jsonify({
-                'success': False,
-                'message': f'{names} уже заявлены в категории {age_group}',
-            }), 400
+            return jsonify({'success': False, 'message': f'Уже заявлены: {names}'}), 400
         return jsonify({'success': False, 'message': 'Команда не найдена'}), 400
 
+    db.session.flush()
+    # Новые заявки — сразу раскладываем игроков, где выбор однозначен.
+    for team_id in touched_teams:
+        auto_assign_roster(tournament, team_id)
     db.session.commit()
     return jsonify({'success': True, 'added': added, 'skipped': skipped, 'missing': missing}), 201
 
@@ -5688,6 +5717,7 @@ def tournament_entry_detail_api(entry_id):
             delete_category_matches(entry.tournament_id, entry.age_group)
             calendar_reset = True
         TournamentAward.query.filter_by(entry_id=entry.id).delete(synchronize_session=False)
+        TournamentEntryPlayer.query.filter_by(entry_id=entry.id).delete(synchronize_session=False)
         db.session.delete(entry)
         db.session.commit()
         return jsonify({'success': True, 'calendar_reset': calendar_reset})
@@ -5754,6 +5784,313 @@ def tournament_entry_detail_api(entry_id):
         'calendar_reset': calendar_reset,
         'rebuilt': rebuilt,
     })
+
+
+# ===== СОСТАВЫ ПО КАТЕГОРИЯМ =====
+#
+# Состав клуба один, а заявок у клуба в турнире может быть несколько
+# («2010-2011 A», «2010-2011 B», «2012-2013 A»). Игроков раскладываем так:
+#   * если по году рождения игроку подходит ровно одна заявка клуба — система
+#     ставит его туда сама;
+#   * если подходят две (A и B одного возраста) — выбирает тренер/организатор;
+#   * один игрок — одна категория на турнир.
+
+def tournament_rules(tournament):
+    try:
+        data = json.loads(tournament.formats or '{}')
+    except Exception:
+        data = {}
+    rules = data.get('_rules') if isinstance(data, dict) else None
+    rules = rules if isinstance(rules, dict) else {}
+    return {'allow_play_up': bool(rules.get('allow_play_up'))}
+
+
+def save_tournament_rules(tournament, rules):
+    try:
+        data = json.loads(tournament.formats or '{}')
+    except Exception:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    data['_rules'] = {'allow_play_up': bool(rules.get('allow_play_up'))}
+    tournament.formats = json.dumps(data, ensure_ascii=False)
+    return data['_rules']
+
+
+def member_birth_year(member):
+    return member.birth_date.year if member and member.birth_date else None
+
+
+def active_team_entries(tournament_id, team_id):
+    entries = TournamentEntry.query.filter(
+        TournamentEntry.tournament_id == tournament_id,
+        TournamentEntry.team_id == team_id,
+        TournamentEntry.status != TournamentEntry.STATUS_DECLINED,
+    ).all()
+    entries.sort(key=lambda e: e.age_group)
+    return entries
+
+
+def years_caption(label):
+    span = tournament_engine.category_years(label)
+    if not span:
+        return 'любой возраст'
+    return f'{span[0]} г.р.' if span[0] == span[1] else f'{span[0]}–{span[1]} г.р.'
+
+
+def auto_assign_roster(tournament, team_id):
+    """Раскладывает игроков клуба, у которых ровно одна подходящая заявка.
+
+    Игроков, которых человек уже распределил или сам снял, не трогает.
+    Автоматическое решение пересматривается, если оно перестало подходить
+    (например, исправили дату рождения или заявку отозвали).
+    """
+    team = db.session.get(TournamentTeamCatalog, team_id)
+    if not team:
+        return False
+    entries = active_team_entries(tournament.id, team_id)
+    entry_ids = {e.id for e in entries}
+    rows = {row.member_id: row for row in TournamentEntryPlayer.query.filter(
+        TournamentEntryPlayer.tournament_id == tournament.id,
+        TournamentEntryPlayer.member_id.in_([m.id for m in team.members] or [0]),
+    ).all()}
+    changed = False
+    for member in team.members:
+        year = member_birth_year(member)
+        strict = [e for e in entries
+                  if tournament_engine.birth_year_fits(year, e.age_group, False)
+                  and (year is not None or tournament_engine.category_years(e.age_group) is None)]
+        row = rows.get(member.id)
+        # Автоматическое решение живёт, только пока выбор однозначен: появилась
+        # вторая подходящая заявка (A и B) — пусть выберет человек.
+        if row and row.is_auto and (row.entry_id not in entry_ids or len(strict) != 1
+                                    or row.entry_id != strict[0].id):
+            db.session.delete(row)
+            row = None
+            changed = True
+        if row:
+            continue
+        if len(strict) == 1:
+            db.session.add(TournamentEntryPlayer(
+                tournament_id=tournament.id, entry_id=strict[0].id,
+                member_id=member.id, is_auto=True))
+            changed = True
+    if changed:
+        db.session.flush()
+    return changed
+
+
+def roster_stats(tournament):
+    """Сколько игроков в каждой заявке и сколько ждут распределения у клуба."""
+    rules = tournament_rules(tournament)
+    rows = TournamentEntryPlayer.query.filter_by(tournament_id=tournament.id).all()
+    by_member = {row.member_id: row for row in rows}
+    by_entry = {}
+    teams_with_roster = set()
+    for row in rows:
+        if row.entry_id:
+            by_entry[row.entry_id] = by_entry.get(row.entry_id, 0) + 1
+            if row.member:
+                teams_with_roster.add(row.member.team_id)
+
+    unassigned_by_team = {}
+    entries = TournamentEntry.query.filter(
+        TournamentEntry.tournament_id == tournament.id,
+        TournamentEntry.status != TournamentEntry.STATUS_DECLINED,
+    ).all()
+    team_entries = {}
+    for entry in entries:
+        team_entries.setdefault(entry.team_id, []).append(entry)
+    for team_id, items in team_entries.items():
+        team = db.session.get(TournamentTeamCatalog, team_id)
+        count = 0
+        for member in (team.members if team else []):
+            row = by_member.get(member.id)
+            if row and row.entry_id:
+                continue
+            year = member_birth_year(member)
+            # Ждут решения те, кто может сыграть хотя бы в одной заявке клуба.
+            if any(tournament_engine.birth_year_fits(year, e.age_group, rules['allow_play_up']) for e in items):
+                count += 1
+        unassigned_by_team[team_id] = count
+    return {'by_entry': by_entry, 'unassigned_by_team': unassigned_by_team,
+            'teams_with_roster': teams_with_roster}
+
+
+def entry_squad(entry):
+    """Игроки заявки. Пока составы клуба не разложены — весь состав клуба (как раньше)."""
+    if not entry or not entry.team:
+        return []
+    members = list(entry.team.members)
+    rows = TournamentEntryPlayer.query.filter(
+        TournamentEntryPlayer.tournament_id == entry.tournament_id,
+        TournamentEntryPlayer.member_id.in_([m.id for m in members] or [0]),
+        TournamentEntryPlayer.entry_id.isnot(None),
+    ).all()
+    if not rows:
+        return members
+    mine = {row.member_id for row in rows if row.entry_id == entry.id}
+    return [m for m in members if m.id in mine]
+
+
+def member_played_for(tournament_id, member_id):
+    """За какую заявку игрок уже выходил на поле в этом турнире."""
+    match_ids = [m.id for m in TournamentMatch.query.with_entities(TournamentMatch.id)
+                 .filter_by(tournament_id=tournament_id).all()]
+    if not match_ids:
+        return None
+    appearance = TournamentMatchAppearance.query.filter(
+        TournamentMatchAppearance.match_id.in_(match_ids),
+        TournamentMatchAppearance.member_id == member_id).first()
+    if appearance:
+        return appearance.entry_id
+    event = TournamentMatchEvent.query.filter(
+        TournamentMatchEvent.match_id.in_(match_ids),
+        or_(TournamentMatchEvent.member_id == member_id,
+            TournamentMatchEvent.assist_member_id == member_id)).first()
+    return event.entry_id if event else None
+
+
+def serialize_roster(tournament, team):
+    rules = tournament_rules(tournament)
+    entries = TournamentEntry.query.filter_by(tournament_id=tournament.id, team_id=team.id).all()
+    entries.sort(key=lambda e: e.age_group)
+    active = [e for e in entries if e.status != TournamentEntry.STATUS_DECLINED]
+    rows = {row.member_id: row for row in TournamentEntryPlayer.query.filter(
+        TournamentEntryPlayer.tournament_id == tournament.id,
+        TournamentEntryPlayer.member_id.in_([m.id for m in team.members] or [0]),
+    ).all()}
+    players = []
+    for member in sorted(team.members, key=lambda m: (m.last_name or '', m.first_name or '')):
+        year = member_birth_year(member)
+        eligible = [e.id for e in active
+                    if tournament_engine.birth_year_fits(year, e.age_group, rules['allow_play_up'])
+                    and (year is not None or tournament_engine.category_years(e.age_group) is None)]
+        row = rows.get(member.id)
+        entry_id = row.entry_id if row else None
+        issue = None
+        if not eligible:
+            spans = [tournament_engine.category_years(e.age_group) for e in active]
+            spans = [span for span in spans if span]
+            if year is None:
+                issue = 'no_birth_date'
+            elif spans and year < min(span[0] for span in spans):
+                issue = 'too_old'
+            elif spans:
+                issue = 'too_young'
+        card = member_card(member)
+        players.append({
+            **card,
+            'birth_year': year,
+            'entry_id': entry_id,
+            'is_auto': bool(row and row.is_auto),
+            'eligible': eligible,
+            # Уже стоит туда, куда по правилам нельзя (например, выключили «младших за старших»).
+            'violates': bool(entry_id and entry_id not in eligible),
+            'issue': issue,
+        })
+    return {
+        'team': {'id': team.id, 'name': team.name,
+                 'logo_url': get_tournament_media_url(team.logo_path)},
+        'rules': rules,
+        'categories': [{
+            'entry_id': e.id,
+            'age_group': e.age_group,
+            'years': years_caption(e.age_group),
+            'status': e.status,
+            'declined': e.status == TournamentEntry.STATUS_DECLINED,
+        } for e in entries],
+        'players': players,
+    }
+
+
+@app.route('/api/tournaments/<int:tournament_id>/teams/<int:team_id>/roster', methods=['GET'])
+@login_required
+def tournament_team_roster_api(tournament_id, team_id):
+    ensure_tournament_tables()
+    if not has_tournament_permission('view'):
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    tournament = Tournament.query.filter_by(id=tournament_id).first_or_404()
+    team = db.session.get(TournamentTeamCatalog, team_id)
+    if not team or not TournamentEntry.query.filter_by(tournament_id=tournament.id, team_id=team.id).first():
+        return jsonify({'success': False, 'message': 'Команда не заявлена в этот турнир'}), 404
+    if auto_assign_roster(tournament, team.id):
+        db.session.commit()
+    return jsonify({'success': True, **serialize_roster(tournament, team)})
+
+
+@app.route('/api/tournaments/<int:tournament_id>/roster', methods=['PUT'])
+@login_required
+def tournament_roster_move_api(tournament_id):
+    """Перенести игрока в заявку (или снять — entry_id: null)."""
+    ensure_tournament_tables()
+    if not has_tournament_permission('edit'):
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    tournament = Tournament.query.filter_by(id=tournament_id).first_or_404()
+    data = request.get_json() or {}
+    try:
+        member_id = int(data.get('member_id'))
+        entry_id = int(data['entry_id']) if data.get('entry_id') else None
+    except (TypeError, ValueError, KeyError):
+        return jsonify({'success': False, 'message': 'Некорректные данные'}), 400
+    member = db.session.get(TournamentTeamMember, member_id)
+    if not member:
+        return jsonify({'success': False, 'message': 'Игрок не найден'}), 404
+
+    entry = None
+    if entry_id:
+        entry = db.session.get(TournamentEntry, entry_id)
+        if not entry or entry.tournament_id != tournament.id or entry.team_id != member.team_id:
+            return jsonify({'success': False, 'message': 'Эта заявка не принадлежит клубу игрока'}), 400
+        if entry.status == TournamentEntry.STATUS_DECLINED:
+            return jsonify({'success': False, 'message': 'Команда отказалась от этой категории'}), 400
+        rules = tournament_rules(tournament)
+        year = member_birth_year(member)
+        span = tournament_engine.category_years(entry.age_group)
+        if span and year is None:
+            return jsonify({'success': False, 'message':
+                            f'У игрока {member.full_name} не указана дата рождения — '
+                            'без неё нельзя проверить возраст. Укажите её в карточке команды.'}), 400
+        if not tournament_engine.birth_year_fits(year, entry.age_group, rules['allow_play_up']):
+            if span and year > span[1]:
+                hint = (' Младшим можно играть за старших, если включить это правило '
+                        'в окне состава.')
+            else:
+                hint = ''
+            return jsonify({'success': False, 'message':
+                            f'{member.full_name} ({year} г.р.) не подходит в {entry.age_group} '
+                            f'({years_caption(entry.age_group)}).{hint}'}), 400
+
+    played = member_played_for(tournament.id, member.id)
+    if played and played != entry_id:
+        played_entry = db.session.get(TournamentEntry, played)
+        return jsonify({'success': False, 'message':
+                        f'{member.full_name} уже играл в этом турнире за '
+                        f'{played_entry.age_group if played_entry else "другую категорию"} — '
+                        'перенести его нельзя.'}), 409
+
+    row = TournamentEntryPlayer.query.filter_by(tournament_id=tournament.id, member_id=member.id).first()
+    if not row:
+        row = TournamentEntryPlayer(tournament_id=tournament.id, member_id=member.id)
+        db.session.add(row)
+    row.entry_id = entry.id if entry else None
+    row.is_auto = False
+    db.session.commit()
+    team = db.session.get(TournamentTeamCatalog, member.team_id)
+    return jsonify({'success': True, **serialize_roster(tournament, team)})
+
+
+@app.route('/api/tournaments/<int:tournament_id>/rules', methods=['PUT'])
+@login_required
+def tournament_rules_api(tournament_id):
+    ensure_tournament_tables()
+    if not has_tournament_permission('edit'):
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    tournament = Tournament.query.filter_by(id=tournament_id).first_or_404()
+    data = request.get_json() or {}
+    rules = save_tournament_rules(tournament, data)
+    db.session.commit()
+    return jsonify({'success': True, 'rules': rules})
 
 
 # ===== СХЕМА ТУРНИРА: ФОРМАТ → ГРУППЫ → КАЛЕНДАРЬ → ПЛЕЙ-ОФФ =====
@@ -6737,7 +7074,7 @@ def serialize_protocol(match):
     def team_block(entry):
         if not entry or not entry.team:
             return None
-        squad = [member_card(m) for m in entry.team.members]
+        squad = [member_card(m) for m in entry_squad(entry)]
         mine = [a for a in appearances if a.entry_id == entry.id]
         return {
             'entry_id': entry.id,
@@ -6799,7 +7136,7 @@ def tournament_match_protocol_api(match_id):
     allowed = {}
     for side, entry_id in sides.items():
         entry = db.session.get(TournamentEntry, entry_id)
-        allowed[side] = {m.id for m in entry.team.members} if entry and entry.team else set()
+        allowed[side] = {m.id for m in entry_squad(entry)} if entry and entry.team else set()
 
     def parse_minute(value):
         if value in (None, ''):
@@ -8056,24 +8393,21 @@ def tournament_start_moment(tournament):
 
 
 def tournament_allowed_birth_years(tournament):
-    """Годы рождения, разрешённые возрастными группами турнира.
+    """Годы рождения, разрешённые возрастными категориями турнира.
 
-    Считаем только метки-годы («2015», «2015 г.р.»); произвольные вроде «U-12»
-    ограничений не задают. Пустой список означает «без ограничений».
+    Понимает «2015», «2015 г.р.» и диапазоны «2010-2011 B». Подписи без года
+    («U-12») ограничений не задают. Пустой список означает «без ограничений».
+    Если младшим разрешено играть за старших, подходят и более поздние годы.
     """
     if not tournament:
         return []
-    try:
-        labels = json.loads(tournament.age_groups or '[]')
-    except Exception:
-        labels = normalize_age_groups(tournament.age_groups)
     years = set()
-    for label in labels or []:
-        match = re.fullmatch(r"\s*(\d{4})\s*(?:г\.?\s*р\.?)?\s*", str(label or ''), re.IGNORECASE)
-        if match:
-            year = int(match.group(1))
-            if 1900 <= year <= 2100:
-                years.add(year)
+    for label in tournament_age_group_labels(tournament):
+        span = tournament_engine.category_years(label)
+        if span:
+            years.update(range(span[0], span[1] + 1))
+    if years and tournament_rules(tournament)['allow_play_up']:
+        years.update(range(min(years), get_local_date().year + 1))
     return sorted(years)
 
 
@@ -8296,6 +8630,7 @@ def team_share_form_member_detail(token, member_id):
             return jsonify({'success': False, 'message':
                             'Игрок есть в протоколах матчей — удалить его нельзя.'}), 409
         TournamentAward.query.filter_by(member_id=member.id).delete(synchronize_session=False)
+        TournamentEntryPlayer.query.filter_by(member_id=member.id).delete(synchronize_session=False)
         photo_path = member.photo_path
         db.session.delete(member)
         db.session.commit()

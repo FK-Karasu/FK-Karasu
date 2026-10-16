@@ -15678,3 +15678,313 @@ table.stat-table tr.stat-muted td { opacity: .5; }
 #tourInvite .tour-link {
     white-space: nowrap;
 }
+
+/* --- Заявка в несколько категорий и составы по категориям --- */
+
+#tournamentEntriesModal .entry-add-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) auto;
+}
+
+.entry-age-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 42px;
+    align-items: center;
+}
+
+.age-pick {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid #e4e0dc;
+    border-radius: 999px;
+    background: #fff;
+    color: #3d4350;
+    font-size: 13px;
+    font-weight: 650;
+    cursor: pointer;
+    user-select: none;
+}
+
+.age-pick input {
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    accent-color: #ee7800;
+}
+
+.age-pick.on {
+    border-color: #ee7800;
+    background: #fff7ed;
+    color: #b45f09;
+}
+
+.age-pick:focus-within {
+    outline: 2px solid #ffb066;
+    outline-offset: 2px;
+}
+
+#tournamentEntriesModal .roster-chip {
+    display: inline-flex !important;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    height: auto !important;
+    min-height: 34px !important;
+    padding: 5px 12px !important;
+    border: 1px solid #e4e0dc !important;
+    border-radius: 10px !important;
+    background: #fff !important;
+    color: #17191f !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    text-align: left;
+    cursor: pointer;
+}
+
+#tournamentEntriesModal .roster-chip:hover {
+    border-color: #ffb066 !important;
+    background: #fff7ed !important;
+}
+
+#tournamentEntriesModal .roster-chip svg {
+    width: 15px;
+    height: 15px;
+    color: #ee7800;
+}
+
+#tournamentEntriesModal .roster-chip em {
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: #fde7d1;
+    color: #9a4d00;
+    font-size: 11.5px;
+    font-style: normal;
+    font-weight: 700;
+}
+
+.roster-modal-content {
+    width: min(1180px, calc(100vw - 32px));
+}
+
+.roster-intro {
+    margin: 0 0 10px;
+    color: #5f6673;
+    font-size: 13.5px;
+    line-height: 1.5;
+}
+
+.roster-summary {
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 13.5px;
+    font-weight: 600;
+}
+
+.roster-summary.warn { border: 1px solid #ffd9b0; background: #fff7ed; color: #6b3f0d; }
+.roster-summary.ok { border: 1px solid #cfe9d9; background: #f2faf5; color: #0f7a4a; }
+
+.roster-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.roster-toolbar .tournament-publish-toggle {
+    flex: 1 1 360px;
+    margin: 0;
+}
+
+.roster-board {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+    align-items: start;
+}
+
+.roster-column {
+    border: 1px solid #ecebe9;
+    border-radius: 13px;
+    background: #fbfaf9;
+    overflow: hidden;
+}
+
+.roster-column.free {
+    border-color: #ffd9b0;
+    background: #fff7ed;
+}
+
+.roster-column header {
+    display: grid;
+    gap: 2px;
+    padding: 11px 13px;
+    border-bottom: 1px solid #ecebe9;
+}
+
+.roster-column header strong { font-size: 14px; }
+
+.roster-column header span {
+    color: #969ca6;
+    font-size: 12px;
+}
+
+.roster-drop {
+    display: grid;
+    gap: 8px;
+    min-height: 80px;
+    padding: 10px;
+}
+
+.roster-drop.over {
+    background: #fff2e0;
+    outline: 2px dashed #ffb066;
+    outline-offset: -6px;
+}
+
+.roster-drop.blocked {
+    background: #fdecea;
+    outline: 2px dashed #e5a39b;
+    outline-offset: -6px;
+    cursor: not-allowed;
+}
+
+.roster-player {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 9px;
+    padding: 8px 10px;
+    border: 1px solid #e8e6e3;
+    border-radius: 10px;
+    background: #fff;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+.roster-player.violates { border-color: #e5a39b; background: #fff7f6; }
+.roster-player.muted { opacity: .75; cursor: default; }
+
+.roster-player.dragging { opacity: .45; }
+
+.roster-player.drag-ghost {
+    position: fixed;
+    z-index: 5000;
+    margin: 0;
+    pointer-events: none;
+    box-shadow: 0 12px 28px rgba(23, 25, 31, .22);
+    transform: rotate(-1.5deg);
+}
+
+.roster-face {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: #fff1df center / cover no-repeat;
+    color: #b45f09;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.roster-info {
+    display: grid;
+    min-width: 0;
+}
+
+.roster-info strong {
+    overflow: hidden;
+    font-size: 13.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.roster-info small {
+    color: #969ca6;
+    font-size: 12px;
+}
+
+.roster-flag {
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: #f1efed;
+    color: #5f6673;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.roster-flag.auto { background: #e7f5ec; color: #0f7a4a; }
+.roster-flag.bad { background: #fde3df; color: #b42318; }
+
+#tournamentEntriesModal ~ #rosterModal .roster-move,
+#rosterModal .roster-move {
+    grid-column: 1 / -1;
+    width: 100% !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 8px !important;
+    border: 1px solid #e4e0dc !important;
+    border-radius: 8px !important;
+    background: #fff !important;
+    font-size: 12.5px !important;
+    cursor: pointer;
+}
+
+.roster-blocked {
+    display: grid;
+    gap: 8px;
+    padding: 0 10px 10px;
+}
+
+.roster-blocked p {
+    margin: 4px 0 0;
+    color: #969ca6;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+@media (max-width: 760px) {
+    #tournamentEntriesModal .entry-add-row {
+        grid-template-columns: 1fr;
+    }
+
+    .roster-board {
+        grid-template-columns: 1fr;
+    }
+}
+
+#rosterModal .modal-content.roster-modal-content {
+    width: min(1180px, calc(100vw - 32px)) !important;
+    max-width: min(1180px, calc(100vw - 32px)) !important;
+}
+
+.roster-fix {
+    grid-column: 1 / -1;
+    color: #9a4d00;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.entry-team-name {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.entry-team-name small {
+    color: #969ca6;
+    font-size: 11.5px;
+    font-weight: 500;
+}
+
+.entry-notice {
+    margin: 0 0 10px;
+}
