@@ -6504,7 +6504,7 @@ def set_match_side(match, side, entry_id):
 
 def propagate_playoff(match):
     """Переносит победителя (и проигравшего — в матч за 3 место) дальше по сетке."""
-    if match.stage != TournamentMatch.STAGE_PLAYOFF:
+    if match.stage not in (TournamentMatch.STAGE_PLAYOFF, TournamentMatch.STAGE_PLACEMENT):
         return
     for target_id, slot, entry_id in (
         (match.next_match_id, match.next_slot, match.winner_entry_id),
@@ -6540,7 +6540,7 @@ def sync_playoff(tournament_id, age_group, settings=None):
             if seed is None:
                 continue
             set_match_side(match, side, resolve_seed(seed, tables))
-    for match in playoff:
+    for match in playoff + placement:
         propagate_playoff(match)
 
 
@@ -6694,12 +6694,12 @@ def normalize_group_slots(entries, groups):
 
 
 def build_placement_matches(tournament, age_group, settings, groups, entries):
-    """Матчи за 5-е, 7-е… места для невышедших из групп.
+    """Матчи за 5-е и следующие места для невышедших из групп.
 
-    Две группы: 3-е место A против 3-го места B — за 5-е, 4-е против 4-х — за 7-е.
-    Групп больше: команды одного уровня ранжируются между собой (очки и мячи
-    в среднем за матч), пары — 1-я против 2-й, 3-я против 4-й. Нечётная
-    последняя команда получает место без матча.
+    Две группы — крест-накрест: 3A–4B и 3B–4A, победители играют за 5-е место,
+    проигравшие — за 7-е (дальше так же за 9–12). Групп больше — команды одного
+    уровня ранжируются между собой, пары 1–2, 3–4. Команда без пары получает
+    место без матча.
     """
     delete_category_matches(tournament.id, age_group, TournamentMatch.STAGE_PLACEMENT)
     if settings['format'] != tournament_engine.FORMAT_GROUPS_PLAYOFF or not settings.get('placement'):
@@ -6709,27 +6709,55 @@ def build_placement_matches(tournament, age_group, settings, groups, entries):
         return 0
     advance = max(1, min(settings['advance'], min(sizes)))
     created = 0
-    for level, first_place, teams, matches in tournament_engine.placement_plan(sizes, advance):
+
+    def new_match(round_no, slot, label, home=(None, None), away=(None, None)):
+        match = TournamentMatch(
+            tournament_id=tournament.id,
+            age_group=age_group,
+            stage=TournamentMatch.STAGE_PLACEMENT,
+            round_no=round_no,
+            bracket_slot=slot,
+            label=label,
+            home_seed=home[0], home_label=home[1],
+            away_seed=away[0], away_label=away[1],
+        )
+        db.session.add(match)
+        return match
+
+    def group_seed(group, level):
+        return f'g:{group.id}:{level}', f'{level} место группы {group.name}'
+
+    for block in tournament_engine.placement_layout(sizes, advance):
+        level, first = block['level'], block['first']
+        if block['kind'] == 'cross':
+            a, b = groups[0], groups[1]
+            span = f'{first}–{first + 3}'
+            semi_one = new_match(1, None, f'Полуфинал за {span} места',
+                                 group_seed(a, level), group_seed(b, level + 1))
+            semi_two = new_match(1, None, f'Полуфинал за {span} места',
+                                 group_seed(b, level), group_seed(a, level + 1))
+            final = new_match(2, first, f'За {first} место',
+                              (None, f'Победитель 1-го полуфинала за {span}'),
+                              (None, f'Победитель 2-го полуфинала за {span}'))
+            lower = new_match(2, first + 2, f'За {first + 2} место',
+                              (None, f'Проигравший 1-го полуфинала за {span}'),
+                              (None, f'Проигравший 2-го полуфинала за {span}'))
+            db.session.flush()
+            for slot, semi in (('home', semi_one), ('away', semi_two)):
+                semi.next_match_id, semi.next_slot = final.id, slot
+                semi.loser_next_match_id, semi.loser_next_slot = lower.id, slot
+            created += 4
+            continue
         level_groups = [g for g, size in zip(groups, sizes) if size >= level]
         if len(level_groups) == 2:
-            pairs = [((f'g:{level_groups[0].id}:{level}', f'{level} место группы {level_groups[0].name}'),
-                      (f'g:{level_groups[1].id}:{level}', f'{level} место группы {level_groups[1].name}'))]
+            pairs = [(group_seed(level_groups[0], level), group_seed(level_groups[1], level))]
         else:
             pairs = [((f'x:{level}:{rank}', f'{rank}-я из {level}-х мест'),
                       (f'x:{level}:{rank + 1}', f'{rank + 1}-я из {level}-х мест'))
-                     for rank in range(1, matches * 2, 2)]
+                     for rank in range(1, block['matches'] * 2, 2)]
         for index, (home, away) in enumerate(pairs):
-            place = first_place + index * 2
-            db.session.add(TournamentMatch(
-                tournament_id=tournament.id,
-                age_group=age_group,
-                stage=TournamentMatch.STAGE_PLACEMENT,
-                round_no=1,
-                bracket_slot=place,
-                label=f'За {place} место',
-                home_seed=home[0], home_label=home[1],
-                away_seed=away[0], away_label=away[1],
-            ))
+            place = first + index * 2
+            new_match(1, place, f'За {place} место', home, away)
             created += 1
     db.session.flush()
     return created
@@ -6864,14 +6892,12 @@ def category_results(tournament, age_group, settings=None, playoff=None, tables=
 
 def placement_results(tournament, age_group, settings, tables=None):
     """Места с 5-го: победитель матча «за N место» — N-й, проигравший — N+1.
-    Команда без пары (нечётное число групп) — по рейтингу своего уровня."""
+    Команда без пары — место по рейтингу своего уровня, без матча."""
     tables = tables if tables is not None else group_tables(tournament.id, age_group, settings)
     if not tables or not all(info['finished'] for info in tables.values()):
         return []
     sizes = [len(info['entries']) for info in tables.values()]
     advance = max(1, min(settings['advance'], min(sizes)))
-    matches = {m.bracket_slot: m for m in category_matches(
-        tournament.id, age_group, TournamentMatch.STAGE_PLACEMENT)}
     out = []
 
     def add(place, entry_id):
@@ -6886,16 +6912,19 @@ def placement_results(tournament, age_group, settings, tables=None):
             'team_logo_url': get_tournament_media_url(team.logo_path) if team else None,
         })
 
-    for level, first_place, teams, pairs in tournament_engine.placement_plan(sizes, advance):
-        for index in range(pairs):
-            match = matches.get(first_place + index * 2)
-            if match and match.is_played and match.winner_entry_id:
-                add(first_place + index * 2, match.winner_entry_id)
-                add(first_place + index * 2 + 1, match.loser_entry_id)
-        if teams % 2:
-            ranking = cross_group_ranking(tables, level)
-            if len(ranking) == teams:
-                add(first_place + teams - 1, ranking[-1]['entry_id'])
+    # Решающие матчи — те, после которых команда никуда дальше не идёт.
+    for match in category_matches(tournament.id, age_group, TournamentMatch.STAGE_PLACEMENT):
+        if match.next_match_id or not match.bracket_slot:
+            continue
+        if match.is_played and match.winner_entry_id:
+            add(match.bracket_slot, match.winner_entry_id)
+            add(match.bracket_slot + 1, match.loser_entry_id)
+    for block in tournament_engine.placement_layout(sizes, advance):
+        if block['kind'] == 'pair' and block['teams'] % 2:
+            ranking = cross_group_ranking(tables, block['level'])
+            if len(ranking) == block['teams']:
+                add(block['first'] + block['teams'] - 1, ranking[-1]['entry_id'])
+    out.sort(key=lambda row: row['place'])
     return out
 
 
@@ -6908,7 +6937,7 @@ def category_overview(tournament, age_group):
     group_stage = category_matches(tournament.id, age_group, TournamentMatch.STAGE_GROUP)
     playoff = category_matches(tournament.id, age_group, TournamentMatch.STAGE_PLAYOFF)
     placement = category_matches(tournament.id, age_group, TournamentMatch.STAGE_PLACEMENT)
-    placement.sort(key=lambda m: m.bracket_slot or 0)
+    placement.sort(key=lambda m: (m.round_no, m.bracket_slot or 0, m.id))
     tables = group_tables(tournament.id, age_group, settings, groups, entries, group_stage)
     results = category_results(tournament, age_group, settings, playoff, tables)
 
@@ -7348,7 +7377,7 @@ def tournament_schedule_api(tournament_id):
                 if other.age_group != match.age_group or other.is_bye or other.id == match.id:
                     continue
                 earlier = other.stage == TournamentMatch.STAGE_GROUP or (
-                    other.stage == TournamentMatch.STAGE_PLAYOFF and other.round_no < match.round_no)
+                    other.stage == match.stage and other.round_no < match.round_no)
                 if not earlier:
                     continue
                 if other.id in pending_ids:
@@ -7475,7 +7504,7 @@ def tournament_match_detail_api(match_id):
                 return jsonify({'success': False, 'message': 'Некорректные дата и время'}), 400
 
     try:
-        if match.stage == TournamentMatch.STAGE_PLAYOFF:
+        if match.stage in (TournamentMatch.STAGE_PLAYOFF, TournamentMatch.STAGE_PLACEMENT):
             propagate_playoff(match)
         else:
             # Итог группы мог измениться — сетка должна это увидеть.

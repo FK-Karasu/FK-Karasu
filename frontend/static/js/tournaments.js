@@ -1471,9 +1471,44 @@ async function loadCategory() {
     renderCategory();
 }
 
+const MEDALS = { 1: 'gold', 2: 'silver', 3: 'bronze' };
+
+/* Итоговая таблица мест — во вкладке «Награды», с эмблемами команд. */
+function renderFinalStandings() {
+    const host = byId('finalStandings');
+    const data = categoryOverview();
+    const results = data?.results || [];
+    if (!host) return;
+    if (!results.length) {
+        host.innerHTML = '';
+        return;
+    }
+    const total = data?.counts?.confirmed || results.length;
+    host.innerHTML = `
+        <section class="final-table">
+            <header>
+                <h3>Итоговые места</h3>
+                <span>${results.length < total ? `определено ${results.length} из ${total}` : 'турнир завершён'}</span>
+            </header>
+            <ol>
+                ${results.map((row) => `
+                    <li class="final-row ${MEDALS[row.place] || ''}">
+                        <span class="final-place">${row.place}</span>
+                        <span class="final-logo">${row.team_logo_url
+                            ? `<img src="${escapeHtml(row.team_logo_url)}" alt="">`
+                            : escapeHtml(initials(row.team_name))}</span>
+                        <strong>${escapeHtml(row.team_name)}</strong>
+                        ${MEDALS[row.place] ? `<span class="final-medal" aria-hidden="true">${
+                            { 1: '🥇', 2: '🥈', 3: '🥉' }[row.place]}</span>` : ''}
+                    </li>`).join('')}
+            </ol>
+        </section>`;
+}
+
 function renderCategory() {
     renderTiebreak();
     renderSteps();
+    renderFinalStandings();
     // Полотно турнира (tournament_board.js) встраивается сюда же.
 }
 

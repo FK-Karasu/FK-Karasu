@@ -98,27 +98,42 @@ def knockout_round_name(matches_in_round):
     return names.get(matches_in_round, f'1/{matches_in_round} финала')
 
 
-def placement_plan(sizes, advance):
-    """Матчи за места для невышедших: уровень → сколько команд и матчей.
-
-    Возвращает список (уровень, первое разыгрываемое место, команд, матчей).
-    """
-    plan = []
-    base = len(sizes) * advance + 1
-    for level in range(advance + 1, max(sizes or [0]) + 1):
-        teams = sum(1 for size in sizes if size >= level)
-        if teams >= 1:
-            plan.append((level, base, teams, teams // 2))
-        base += teams
-    return plan
-
-
 def plural_matches(count):
     if count % 10 == 1 and count % 100 != 11:
         return 'матч'
     if 2 <= count % 10 <= 4 and not 12 <= count % 100 <= 14:
         return 'матча'
     return 'матчей'
+
+
+def placement_layout(sizes, advance):
+    """Как разыграть места для невышедших из групп.
+
+    Две группы — крест-накрест, как в плей-офф: 3-и и 4-е места образуют сетку
+    за 5–8 места (3A–4B, 3B–4A, победители — за 5-е, проигравшие — за 7-е),
+    5-е и 6-е — за 9–12 и так далее. Если уровень остался без пары — один
+    матч (3A–3B) или место без игры.
+    Групп больше двух — команды одного уровня ранжируются между собой,
+    пары 1–2, 3–4.
+    Блок: {'kind': 'cross'|'pair', 'level': L, 'first': первое место,
+    'teams': команд, 'matches': матчей}.
+    """
+    blocks = []
+    base = len(sizes) * advance + 1
+    top = max(sizes or [0])
+    level = advance + 1
+    while level <= top:
+        teams = sum(1 for size in sizes if size >= level)
+        following = sum(1 for size in sizes if size >= level + 1)
+        if len(sizes) == 2 and teams == 2 and following == 2:
+            blocks.append({'kind': 'cross', 'level': level, 'first': base, 'teams': 4, 'matches': 4})
+            base += 4
+            level += 2
+            continue
+        blocks.append({'kind': 'pair', 'level': level, 'first': base, 'teams': teams, 'matches': teams // 2})
+        base += teams
+        level += 1
+    return blocks
 
 
 def describe_plan(team_count, settings):
@@ -160,9 +175,9 @@ def describe_plan(team_count, settings):
         qualified = groups * advance
         steps.append(f'Из каждой группы выходят {advance} → {qualified} команд в плей-офф')
         if s['placement']:
-            placement = placement_plan(sizes, advance)
-            placement_matches = sum(item[3] for item in placement)
-            placement_from = placement[0][1] if placement else 0
+            placement = placement_layout(sizes, advance)
+            placement_matches = sum(item['matches'] for item in placement)
+            placement_from = placement[0]['first'] if placement else 0
     else:
         qualified = team_count
         steps.append(f'{team_count} команд по жребию, проигравший выбывает')

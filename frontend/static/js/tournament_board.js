@@ -14,10 +14,20 @@
         return size;
     }
 
+    // Как placement_layout на сервере: при двух группах — крест-накрест по 4 матча.
     function placementCount(sizes, advance) {
         let total = 0;
-        for (let level = advance + 1; level <= Math.max(...sizes); level += 1) {
-            total += Math.floor(sizes.filter((size) => size >= level).length / 2);
+        let level = advance + 1;
+        while (level <= Math.max(...sizes)) {
+            const teams = sizes.filter((size) => size >= level).length;
+            const next = sizes.filter((size) => size >= level + 1).length;
+            if (sizes.length === 2 && teams === 2 && next === 2) {
+                total += 4;
+                level += 2;
+            } else {
+                total += Math.floor(teams / 2);
+                level += 1;
+            }
         }
         return total;
     }
@@ -285,10 +295,16 @@
         // Кнопка «Добавить матчи за места» показывается вместе с сеткой.
         const canAddPlacement = data.settings.format === 'groups_playoff' && data.groups.length
             && data.built && !placement.length;
+        // Матчи за места — тоже деревом: полуфиналы за 5–8 → «За 5 место» и «За 7 место».
+        const placementRounds = [...new Set(placement.map((match) => match.round_no))].sort((a, b) => a - b);
         byId('boardPlacement').innerHTML = placement.length ? `
-            <p class="bk-round-title">Матчи за места</p>
-            <div class="bk-placement-list">${placement.map((match) => `
-                <div class="bk-slot">${bracketMatchMarkup(match, match.label)}</div>`).join('')}</div>`
+            <h3 class="board-title">Матчи за места</h3>
+            <div class="board-bracket placement-bracket">${placementRounds.map((round, index) => `
+                <div class="bk-round" style="--depth:${index}">
+                    <p class="bk-round-title">${index === 0 && placementRounds.length > 1 ? 'Полуфиналы' : 'Матчи за места'}</p>
+                    <div class="bk-round-body">${placement.filter((match) => match.round_no === round).map((match) => `
+                        <div class="bk-slot">${bracketMatchMarkup(match, match.label)}</div>`).join('')}</div>
+                </div>`).join('')}</div>`
             : canAddPlacement ? `
             <div class="placement-offer">
                 <span>Команды, не вышедшие из групп, могут доиграть за 5-е и следующие места.</span>
@@ -333,7 +349,7 @@
 
         const results = data.results || [];
         byId('boardResults').innerHTML = results.length ? results.map((row) => `
-            <span class="board-medal m${row.place}"><b>${row.place}</b>${escapeHtml(row.team_name)}</span>`).join('') : '';
+            <span class="board-medal m${row.place}"><b>${row.place}</b>${logoMarkup(row.team_name, row.team_logo_url)}${escapeHtml(row.team_name)}</span>`).join('') : '';
     }
 
     /* --- Ввод счёта прямо на полотне --- */
