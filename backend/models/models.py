@@ -864,6 +864,8 @@ class TournamentEntry(db.Model):
     age_group = db.Column(db.String(50), nullable=False)
     status = db.Column(db.String(20), nullable=False, default=STATUS_INVITED)
     group_id = db.Column(db.Integer, db.ForeignKey('tournament_groups.id'), nullable=True, index=True)
+    # Ячейка внутри группы: 1 → «A1», 2 → «A2». По ячейкам строится календарь туров.
+    group_slot = db.Column(db.Integer, nullable=True)
     note = db.Column(db.String(500), nullable=True)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=get_local_datetime)

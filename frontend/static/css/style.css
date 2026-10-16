@@ -16225,3 +16225,629 @@ table.stat-table tr.stat-muted td { opacity: .5; }
 
     #tournamentEntriesModal .ws-studio span { display: none; }
 }
+
+/* --- Интерактивный вид турнира (tournament_board.js) --- */
+
+#tournamentEntriesModal .entry-tabs-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.view-switch {
+    display: inline-flex;
+    flex: 0 0 auto;
+    margin-bottom: 6px;
+    padding: 3px;
+    border-radius: 10px;
+    background: #f4f2f0;
+}
+
+#tournamentEntriesModal .view-switch button {
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 0 12px !important;
+    border: 0 !important;
+    border-radius: 8px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #5f6673 !important;
+    font-size: 12.5px !important;
+    font-weight: 650 !important;
+}
+
+#tournamentEntriesModal .view-switch button.active {
+    background: #fff !important;
+    color: #17191f !important;
+    box-shadow: 0 1px 3px rgba(23, 25, 31, .1) !important;
+}
+
+.view-switch sup {
+    color: #ee7800;
+    font-size: 9.5px;
+    font-weight: 700;
+}
+
+.board-panel {
+    display: grid;
+    gap: 16px;
+}
+
+.board-panel[hidden] { display: none; }
+
+.board-bar {
+    display: grid;
+    gap: 12px;
+}
+
+.board-templates {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+#tournamentEntriesModal .board-template {
+    display: grid !important;
+    gap: 2px;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 9px 14px !important;
+    border: 1px solid #ecebe9 !important;
+    border-radius: 12px !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    color: #17191f !important;
+    text-align: left;
+    cursor: pointer;
+}
+
+#tournamentEntriesModal .board-template strong { font-size: 13.5px; }
+#tournamentEntriesModal .board-template small { color: #969ca6; font-size: 11.5px; font-weight: 500; }
+
+#tournamentEntriesModal .board-template.active {
+    border-color: #ee7800 !important;
+    background: #fff7ed !important;
+    box-shadow: 0 0 0 1px #ee7800 inset !important;
+}
+
+#tournamentEntriesModal .board-template:disabled { opacity: .45; cursor: not-allowed; }
+
+.board-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+#tournamentEntriesModal .board-actions .btn-primary,
+#tournamentEntriesModal .board-actions .btn-secondary {
+    height: 38px !important;
+    min-height: 38px !important;
+}
+
+#tournamentEntriesModal .board-reset {
+    height: auto !important;
+    min-height: 0 !important;
+    margin-left: auto;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #c2410c !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+}
+
+.board-pool {
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+    border: 1px dashed #ffb066;
+    border-radius: 14px;
+    background: #fffaf3;
+}
+
+.board-pool[hidden] { display: none; }
+
+.board-pool-title {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.board-pool-title small {
+    margin-left: 6px;
+    color: #969ca6;
+    font-weight: 500;
+}
+
+.board-pool-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.board-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
+    align-items: start;
+}
+
+.board-group {
+    border: 1px solid #ecebe9;
+    border-radius: 14px;
+    background: #fff;
+    overflow: hidden;
+}
+
+.board-group.finished { border-color: #cfe9d9; }
+
+.board-group header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: #fbfaf9;
+    border-bottom: 1px solid #ecebe9;
+}
+
+.board-badge {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #e7f5ec;
+    color: #0f7a4a;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.board-cells {
+    display: grid;
+    gap: 6px;
+    padding: 10px;
+}
+
+.board-cell {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 4px 6px;
+    border: 1px dashed #e4ddd6;
+    border-radius: 10px;
+    background: #fdfcfb;
+}
+
+.board-cell.filled {
+    border-style: solid;
+    border-color: #efedea;
+    background: #fff;
+}
+
+.board-cell.over,
+.board-pool.over {
+    background: #fff2e0;
+    outline: 2px dashed #ffb066;
+    outline-offset: -3px;
+}
+
+.board-code {
+    display: inline-grid;
+    place-items: center;
+    min-width: 28px;
+    height: 22px;
+    margin-right: 6px;
+    border-radius: 6px;
+    background: #f4f2f0;
+    color: #5f6673;
+    font-size: 11px;
+    font-weight: 750;
+}
+
+.board-cell > .board-code { margin-right: 0; }
+
+.board-empty {
+    color: #b6b0a9;
+    font-size: 12.5px;
+}
+
+.board-team {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 4px 10px 4px 4px;
+    border: 1px solid #ecebe9;
+    border-radius: 999px;
+    background: #fff;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+.board-cell .board-team {
+    border-color: transparent;
+    padding-left: 0;
+}
+
+.board-team.locked { cursor: default; }
+.board-team.dragging { opacity: .4; }
+
+.board-team.drag-ghost {
+    position: fixed;
+    z-index: 5000;
+    margin: 0;
+    pointer-events: none;
+    box-shadow: 0 12px 28px rgba(23, 25, 31, .22);
+}
+
+.board-logo {
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 26px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #fff1df;
+    color: #b45f09;
+    font-size: 10.5px;
+    font-weight: 750;
+    overflow: hidden;
+}
+
+.board-logo img { width: 100%; height: 100%; object-fit: contain; }
+
+.board-team-name {
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Жеребьёвка: команды появляются в ячейках по очереди. */
+.board-groups.reveal .board-cell.filled .board-team {
+    animation: board-pop .4s both;
+    animation-delay: calc(var(--reveal) * 140ms);
+}
+
+@keyframes board-pop {
+    from { opacity: 0; transform: scale(.6); }
+    to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .board-groups.reveal .board-cell.filled .board-team { animation: none; }
+}
+
+/* Шахматка группы */
+.mx-wrap {
+    overflow-x: auto;
+    border-top: 1px solid #ecebe9;
+}
+
+.mx-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+}
+
+.mx-table th,
+.mx-table td {
+    padding: 5px 4px;
+    border-bottom: 1px solid #f1efed;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.mx-table thead th {
+    color: #969ca6;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.mx-table .mx-team {
+    max-width: 130px;
+    overflow: hidden;
+    padding-left: 10px;
+    text-align: left;
+    text-overflow: ellipsis;
+    font-weight: 650;
+}
+
+.mx-self { background: repeating-linear-gradient(135deg, #f6f4f2 0 4px, #fff 4px 8px); }
+
+.mx-cell { min-width: 40px; }
+
+#tournamentEntriesModal .mx-score {
+    display: inline-grid !important;
+    place-items: center;
+    min-width: 34px !important;
+    height: 24px !important;
+    min-height: 24px !important;
+    margin: 1px;
+    padding: 0 5px !important;
+    border: 0 !important;
+    border-radius: 6px !important;
+    box-shadow: none !important;
+    font-size: 12px !important;
+    font-weight: 750 !important;
+    cursor: pointer;
+}
+
+#tournamentEntriesModal .mx-score.todo { background: #f6f4f2 !important; color: #b6b0a9 !important; }
+#tournamentEntriesModal .mx-score.w { background: #e7f5ec !important; color: #0f7a4a !important; }
+#tournamentEntriesModal .mx-score.d { background: #f1efed !important; color: #5f6673 !important; }
+#tournamentEntriesModal .mx-score.l { background: #fde3df !important; color: #b42318 !important; }
+#tournamentEntriesModal .mx-score:hover { outline: 2px solid #ffb066; }
+
+.mx-num { color: #5f6673; }
+.mx-points { color: #17191f; font-weight: 750; }
+.mx-qualified .place-badge { background: #0f7a4a; color: #fff; }
+
+/* Сетка плей-офф деревом */
+.board-title { margin: 0 0 10px; font-size: 15px; }
+
+.board-results {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.board-medal {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px 6px 6px;
+    border-radius: 999px;
+    background: #f6f4f2;
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.board-medal b {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #dfe3e8;
+}
+
+.board-medal.m1 b { background: #ffd45e; }
+.board-medal.m3 b { background: #f0c08a; }
+
+.board-bracket {
+    display: flex;
+    gap: 22px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+}
+
+.bk-round {
+    display: flex;
+    flex: 0 0 210px;
+    flex-direction: column;
+}
+
+.bk-round-title {
+    margin: 0 0 8px;
+    color: #b45f09;
+    font-size: 11.5px;
+    font-weight: 750;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+}
+
+.bk-round-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: space-around;
+    gap: 10px;
+}
+
+.bk-slot {
+    position: relative;
+}
+
+/* Линия к следующему раунду */
+.bk-round:not(:last-child) .bk-slot::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: -22px;
+    width: 22px;
+    border-top: 1px solid #ddd4ca;
+}
+
+#tournamentEntriesModal .bk-match {
+    display: grid !important;
+    gap: 0;
+    width: 100%;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 6px 8px !important;
+    border: 1px solid #ecebe9 !important;
+    border-radius: 10px !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    color: #17191f !important;
+    text-align: left;
+}
+
+#tournamentEntriesModal .bk-match.ready { cursor: pointer; }
+#tournamentEntriesModal .bk-match.ready:hover { border-color: #ffb066 !important; }
+#tournamentEntriesModal .bk-match.played { border-color: #cfe9d9 !important; }
+#tournamentEntriesModal .bk-match:disabled { cursor: default; opacity: 1; }
+
+.bk-match.bye {
+    border: 1px dashed #e4ddd6;
+    border-radius: 10px;
+    padding: 6px 8px;
+    background: transparent;
+}
+
+.bk-no {
+    color: #969ca6;
+    font-size: 10.5px;
+    font-weight: 600;
+}
+
+.bk-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px 0;
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.bk-row.pending { color: #b6b0a9; font-weight: 500; }
+.bk-row.win { color: #0f7a4a; }
+
+.bk-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bk-score { font-weight: 750; }
+.bk-score small { margin-left: 3px; color: #969ca6; font-size: 11px; }
+
+.bk-bronze { margin-top: 18px; }
+
+/* Окошко ввода счёта */
+.score-popover {
+    position: fixed;
+    z-index: 4000;
+    width: min(380px, calc(100vw - 24px));
+    padding: 14px;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 16px 44px rgba(15, 17, 22, .28);
+}
+
+.score-popover[hidden] { display: none; }
+
+.sp-title {
+    margin: 0 0 10px;
+    color: #969ca6;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.sp-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 52px auto 52px minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
+}
+
+.sp-row + .sp-row { margin-top: 8px; }
+.sp-row[hidden] { display: none; }
+
+.sp-team {
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sp-row .sp-team:first-child { text-align: right; }
+
+.score-popover input {
+    width: 52px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    padding: 0 !important;
+    border: 1px solid #dfe1e5 !important;
+    border-radius: 9px !important;
+    font-size: 17px !important;
+    font-weight: 750 !important;
+    text-align: center;
+    appearance: textfield;
+}
+
+.sp-pen input { height: 34px !important; min-height: 34px !important; font-size: 14px !important; }
+
+.sp-error {
+    margin: 8px 0 0;
+    color: #b42318;
+    font-size: 12.5px;
+}
+
+.sp-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.score-popover .sp-save {
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 16px !important;
+    border: 1px solid #ff8a00 !important;
+    border-radius: 10px !important;
+    background: #ff8a00 !important;
+    color: #fff !important;
+    box-shadow: none !important;
+    font-weight: 700 !important;
+}
+
+.score-popover .sp-link {
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #b45f09 !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+}
+
+@media (max-width: 760px) {
+    #tournamentEntriesModal .entry-tabs-row { flex-direction: column-reverse; align-items: stretch; }
+    .view-switch { align-self: flex-start; }
+    .board-groups { grid-template-columns: 1fr; }
+}
+
+.board-groups {
+    grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
+}
+
+.mx-table .mx-team { max-width: 150px; }
+
+#scorePopover .sp-save {
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 16px !important;
+    border: 1px solid #ff8a00 !important;
+    border-radius: 10px !important;
+    background: #ff8a00 !important;
+    color: #fff !important;
+    box-shadow: none !important;
+    font-weight: 700 !important;
+}
+
+#scorePopover .sp-link {
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #b45f09 !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+}
+
+@media (max-width: 760px) {
+    .board-groups { grid-template-columns: 1fr; }
+}

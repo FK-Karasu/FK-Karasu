@@ -8,7 +8,7 @@
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101608">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101610">
 </head>
 <body>
     {% include '_sidebar.html' %}
@@ -353,7 +353,39 @@
                     <button type="button" data-entry-tab="players">
                         <span class="step-no">5</span><span class="step-title">Награды</span></button>
                 </nav>
+                <div class="view-switch" id="viewSwitch" role="group" aria-label="Вид">
+                    <button type="button" data-view-mode="steps" class="active">Пошагово</button>
+                    <button type="button" data-view-mode="board">Интерактивно <sup>новое</sup></button>
                 </div>
+                </div>
+
+                <div id="boardPanel" class="board-panel" hidden>
+                    <section class="board-bar">
+                        <div class="board-templates" id="boardTemplates" role="radiogroup" aria-label="Шаблон турнира"></div>
+                        <div class="board-actions">
+                            <button class="btn-primary" type="button" id="boardDrawBtn">
+                                <i data-lucide="shuffle"></i><span>Жеребьёвка</span>
+                            </button>
+                            <button class="btn-secondary" type="button" id="boardBuildBtn">
+                                <i data-lucide="list-checks"></i><span>Составить календарь</span>
+                            </button>
+                            <button class="btn-secondary" type="button" id="boardScheduleBtn">
+                                <i data-lucide="calendar-clock"></i><span>По времени</span>
+                            </button>
+                            <button class="board-reset" type="button" id="boardResetBtn">Сбросить</button>
+                        </div>
+                    </section>
+                    <div class="tournament-catalog-form-error" id="boardError" hidden></div>
+                    <section class="board-pool" id="boardPool" data-cell data-group-index="" aria-label="Команды без места"></section>
+                    <div class="board-groups" id="boardGroups"></div>
+                    <section class="board-bracket-wrap" id="boardBracketWrap" hidden>
+                        <h3 class="board-title">Плей-офф</h3>
+                        <div class="board-results" id="boardResults"></div>
+                        <div class="board-bracket" id="boardBracket"></div>
+                    </section>
+                </div>
+
+                <div class="score-popover" id="scorePopover" role="dialog" aria-label="Счёт матча" hidden></div>
 
                 <div data-entry-panel="entries">
                 <div class="entry-add-row">
@@ -1028,7 +1060,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}?v=2026080801"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101605"></script>
+    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101606"></script>
+    <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101603"></script>
     <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101605"></script>
 </body>
 </html>

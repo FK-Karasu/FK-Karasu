@@ -1749,6 +1749,8 @@ def ensure_tournament_tables():
             pending.append(('tournament_team_members', 'position', 'VARCHAR(50)'))
         if 'group_id' not in entry_columns:
             pending.append(('tournament_entries', 'group_id', 'INTEGER'))
+        if 'group_slot' not in entry_columns:
+            pending.append(('tournament_entries', 'group_slot', 'INTEGER'))
         for column_name, column_type in (
             ('home_penalty', 'INTEGER'),
             ('away_penalty', 'INTEGER'),
@@ -5560,6 +5562,7 @@ def serialize_tournament_entry(entry):
         'status': entry.status,
         'status_label': ENTRY_STATUSES.get(entry.status, entry.status),
         'group_id': entry.group_id,
+        'group_slot': entry.group_slot,
         'note': entry.note,
         'member_count': members,
         'created_at': entry.created_at.isoformat() if entry.created_at else None,
@@ -5744,6 +5747,8 @@ def tournament_entry_detail_api(entry_id):
             if has_results:
                 return jsonify({'success': False, 'message': locked_message}), 409
             entry.group_id = new_group
+            # В новой группе — первая свободная ячейка (выдаст пересборка).
+            entry.group_slot = None
 
     if 'status' in data:
         status = data.get('status')
@@ -5761,6 +5766,7 @@ def tournament_entry_detail_api(entry_id):
             # Отказавшаяся команда не может оставаться в группе.
             if not now_confirmed:
                 entry.group_id = None
+                entry.group_slot = None
 
     if 'note' in data:
         entry.note = (data.get('note') or '').strip() or None
@@ -6212,7 +6218,7 @@ def ensure_tournament_groups(tournament_id, age_group, count):
 
     for extra in groups[count:]:
         delete_matches(TournamentMatch.query.filter_by(group_id=extra.id).all())
-        TournamentEntry.query.filter_by(group_id=extra.id).update({'group_id': None})
+        TournamentEntry.query.filter_by(group_id=extra.id).update({'group_id': None, 'group_slot': None})
         db.session.delete(extra)
 
     db.session.flush()
@@ -6391,7 +6397,8 @@ def generate_group_stage(tournament, age_group, settings, groups, entries):
     delete_category_matches(tournament.id, age_group, TournamentMatch.STAGE_GROUP)
     created = 0
     for group in groups:
-        group_entries = [e for e in entries if e.group_id == group.id]
+        group_entries = sorted((e for e in entries if e.group_id == group.id),
+                               key=lambda e: (e.group_slot or 99, e.id))
         for round_no, pairs in enumerate(
                 tournament_engine.round_robin_rounds(group_entries, settings['legs']), start=1):
             for home, away in pairs:
@@ -6511,6 +6518,30 @@ def build_playoff_skeleton(tournament, age_group, settings, groups, entries):
     return sum(1 for r in rounds for m in r if not m.is_bye) + (1 if settings['third_place'] and qualified >= 4 else 0)
 
 
+def normalize_group_slots(entries, groups):
+    """Каждой команде группы — своя ячейка. Выбранные ячейки сохраняются
+    (можно поставить команду в A4, оставив A3 пустой); номер получают только
+    те, у кого его нет или он повторяется."""
+    for group in groups:
+        members = [e for e in entries if e.group_id == group.id]
+        members.sort(key=lambda e: (e.group_slot is None, e.group_slot or 0,
+                                    (e.team.name if e.team else '').lower()))
+        taken = set()
+        pending = []
+        for entry in members:
+            if entry.group_slot and 1 <= entry.group_slot <= 16 and entry.group_slot not in taken:
+                taken.add(entry.group_slot)
+            else:
+                pending.append(entry)
+        free = (number for number in range(1, 64) if number not in taken)
+        for entry in pending:
+            entry.group_slot = next(free)
+            taken.add(entry.group_slot)
+    for entry in entries:
+        if entry.group_id is None:
+            entry.group_slot = None
+
+
 def assign_groups(entries, groups, draw):
     """Жеребьёвка или добор: каждой команде — группа, составы ровные."""
     if draw:
@@ -6518,6 +6549,8 @@ def assign_groups(entries, groups, draw):
         random.shuffle(shuffled)
         for index, entry in enumerate(shuffled):
             entry.group_id = groups[index % len(groups)].id
+            # Порядок жребия = номер ячейки: первый в группу A — A1 и т. д.
+            entry.group_slot = index // len(groups) + 1
         return
     valid = {g.id for g in groups}
     counts = {g.id: 0 for g in groups}
@@ -6530,7 +6563,9 @@ def assign_groups(entries, groups, draw):
         if entry.group_id is None:
             target = min(groups, key=lambda g: (counts[g.id], g.sort_order))
             entry.group_id = target.id
+            entry.group_slot = None
             counts[target.id] += 1
+    normalize_group_slots(entries, groups)
 
 
 def rebuild_category(tournament, age_group, settings, draw=False):
@@ -6546,6 +6581,7 @@ def rebuild_category(tournament, age_group, settings, draw=False):
         groups = ensure_tournament_groups(tournament.id, age_group, 0)
         for entry in entries:
             entry.group_id = None
+            entry.group_slot = None
     else:
         count = 1 if fmt == tournament_engine.FORMAT_LEAGUE else max(1, min(settings['groups'], len(entries) // 2))
         groups = ensure_tournament_groups(tournament.id, age_group, count)
@@ -6621,6 +6657,11 @@ def category_overview(tournament, age_group):
     results = category_results(tournament, age_group, settings, playoff, tables)
 
     advance = settings['advance'] if settings['format'] == tournament_engine.FORMAT_GROUPS_PLAYOFF else 0
+    planned = tournament_engine.split_sizes(len(entries), len(groups)) if groups else []
+    capacity = {}
+    for index, group in enumerate(groups):
+        current = sum(1 for e in entries if e.group_id == group.id)
+        capacity[group.id] = max(current, planned[index] if index < len(planned) else 0)
     blocks = []
     for group in groups:
         info = tables[group.id]
@@ -6663,6 +6704,7 @@ def category_overview(tournament, age_group):
         'has_results': any(m.is_played for m in group_stage + playoff),
         'steps': steps,
         'groups': [serialize_tournament_group(g) for g in groups],
+        'group_capacity': {str(k): v for k, v in capacity.items()},
         'entries': [serialize_tournament_entry(e) for e in entries],
         'blocks': blocks,
         'playoff': [serialize_match(m) for m in playoff],
@@ -6745,6 +6787,118 @@ def tournament_build_api(tournament_id):
         return jsonify({'success': False, 'message': str(error)}), 400
     db.session.commit()
     return jsonify({'success': True, **summary})
+
+
+def planned_group_count(settings, team_count):
+    if settings['format'] == tournament_engine.FORMAT_KNOCKOUT:
+        return 0
+    if settings['format'] == tournament_engine.FORMAT_LEAGUE:
+        return 1
+    return max(1, min(settings['groups'], team_count // 2 or 1))
+
+
+def refresh_calendar_after_placement(tournament, age_group, settings):
+    """Если календарь уже составлен, приводим его к новым ячейкам.
+
+    Пока кто-то из подтверждённых стоит вне групп, календарь не собрать — сбрасываем.
+    """
+    if not TournamentMatch.query.filter_by(tournament_id=tournament.id, age_group=age_group).first():
+        return {'calendar_reset': False, 'rebuilt': False}
+    entries = confirmed_entries(tournament.id, age_group)
+    if settings['format'] != tournament_engine.FORMAT_KNOCKOUT and any(e.group_id is None for e in entries):
+        delete_category_matches(tournament.id, age_group)
+        return {'calendar_reset': True, 'rebuilt': False}
+    try:
+        rebuild_category(tournament, age_group, settings, draw=False)
+        return {'calendar_reset': False, 'rebuilt': True}
+    except (ValueError, TournamentConflict):
+        delete_category_matches(tournament.id, age_group)
+        return {'calendar_reset': True, 'rebuilt': False}
+
+
+@app.route('/api/tournaments/<int:tournament_id>/template', methods=['POST'])
+@login_required
+def tournament_template_api(tournament_id):
+    """Интерактивный режим: выбрать шаблон — получить пустые ячейки групп."""
+    ensure_tournament_tables()
+    if not has_tournament_permission('edit'):
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    tournament = Tournament.query.filter_by(id=tournament_id).first_or_404()
+    data = request.get_json() or {}
+    age_group = request_age_group(tournament, data.get('age_group'))
+    if not age_group:
+        return jsonify({'success': False, 'message': 'Выберите возрастную категорию турнира'}), 400
+    if category_has_results(tournament.id, age_group):
+        return jsonify({'success': False, 'message':
+                        'Матчи уже идут — шаблон не поменять. Сначала сбросьте результаты.'}), 409
+    settings = save_category_settings(tournament, age_group, data.get('settings') or {})
+    entries = confirmed_entries(tournament.id, age_group)
+    delete_category_matches(tournament.id, age_group)
+    groups = ensure_tournament_groups(tournament.id, age_group, planned_group_count(settings, len(entries)))
+    if not groups:
+        for entry in entries:
+            entry.group_id = None
+            entry.group_slot = None
+    else:
+        valid = {g.id for g in groups}
+        for entry in entries:
+            if entry.group_id not in valid:
+                entry.group_id = None
+        normalize_group_slots(entries, groups)
+    db.session.commit()
+    return jsonify({'success': True, 'groups': len(groups)})
+
+
+@app.route('/api/tournaments/<int:tournament_id>/place', methods=['POST'])
+@login_required
+def tournament_place_api(tournament_id):
+    """Положить команду в ячейку группы (или вернуть в пул). Занятая ячейка — обмен местами."""
+    ensure_tournament_tables()
+    if not has_tournament_permission('edit'):
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    tournament = Tournament.query.filter_by(id=tournament_id).first_or_404()
+    data = request.get_json() or {}
+    age_group = request_age_group(tournament, data.get('age_group'))
+    if not age_group:
+        return jsonify({'success': False, 'message': 'Выберите возрастную категорию турнира'}), 400
+    if category_has_results(tournament.id, age_group):
+        return jsonify({'success': False, 'message':
+                        'Матчи уже идут — группы закреплены. Сначала сбросьте результаты.'}), 409
+    settings = category_settings(tournament, age_group)
+    if settings['format'] == tournament_engine.FORMAT_KNOCKOUT:
+        return jsonify({'success': False, 'message': 'В олимпийской системе групп нет'}), 400
+    try:
+        entry_id = int(data.get('entry_id'))
+        group_index = int(data['group_index']) if data.get('group_index') is not None else None
+        slot = int(data['slot']) if data.get('slot') is not None else None
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Некорректные данные'}), 400
+
+    entries = confirmed_entries(tournament.id, age_group)
+    entry = next((e for e in entries if e.id == entry_id), None)
+    if not entry:
+        return jsonify({'success': False, 'message': 'Команда не подтверждена в этой категории'}), 400
+    groups = ensure_tournament_groups(tournament.id, age_group, planned_group_count(settings, len(entries)))
+
+    if group_index is None:
+        entry.group_id = None
+        entry.group_slot = None
+    else:
+        if group_index < 0 or group_index >= len(groups):
+            return jsonify({'success': False, 'message': 'Такой группы нет'}), 400
+        target = groups[group_index]
+        slot = slot or (sum(1 for e in entries if e.group_id == target.id and e is not entry) + 1)
+        occupant = next((e for e in entries if e.group_id == target.id
+                         and e.group_slot == slot and e is not entry), None)
+        if occupant:
+            # Обмен: команда из занятой ячейки встаёт туда, откуда пришла наша.
+            occupant.group_id, occupant.group_slot = entry.group_id, entry.group_slot
+        entry.group_id, entry.group_slot = target.id, slot
+    db.session.flush()
+    normalize_group_slots(entries, groups)
+    outcome = refresh_calendar_after_placement(tournament, age_group, settings)
+    db.session.commit()
+    return jsonify({'success': True, **outcome})
 
 
 @app.route('/api/tournaments/<int:tournament_id>/reset', methods=['POST'])
