@@ -404,6 +404,98 @@
         drawConnectors(byId('boardPlacement')?.querySelector('.placement-bracket'), data.placement || [], { losers: true });
     }
 
+    /* --- Календарь: кто с кем, когда и где --- */
+
+    const WEEKDAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+
+    function stageLabel(match) {
+        if (match.stage === 'group') {
+            return match.group_name && (categoryOverview()?.groups || []).length > 1
+                ? `Группа ${match.group_name} · тур ${match.round_no}` : `Тур ${match.round_no}`;
+        }
+        return match.label || 'Плей-офф';
+    }
+
+    function dayTitle(value) {
+        const date = new Date(value);
+        return `${date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}, ${WEEKDAYS[date.getDay()]}`;
+    }
+
+    function calendarRowMarkup(match) {
+        const time = match.kickoff_at
+            ? new Date(match.kickoff_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '—:—';
+        const ready = Boolean(match.home.entry_id && match.away.entry_id);
+        const team = (side, align) => `
+            <span class="cal-team ${align}${match[side].entry_id ? '' : ' pending'}${
+                match.winner_entry_id && match.winner_entry_id === match[side].entry_id ? ' win' : ''}">
+                ${align === 'home' ? `<span class="cal-name">${escapeHtml(match[side].team_name)}</span>` : ''}
+                ${match[side].entry_id ? logoMarkup(match[side].team_name, match[side].team_logo_url) : ''}
+                ${align === 'away' ? `<span class="cal-name">${escapeHtml(match[side].team_name)}</span>` : ''}
+            </span>`;
+        const pens = match.is_played && match.home_score === match.away_score && match.home_penalty !== null
+            ? `<small>пен. ${match.home_penalty}:${match.away_penalty}</small>` : '';
+        return `
+            <button type="button" class="cal-row${match.is_played ? ' played' : ''}" data-board-match="${match.id}"
+                ${ready || isPairable(match) ? '' : 'disabled'}>
+                <span class="cal-time">${time}</span>
+                <span class="cal-stage">${escapeHtml(stageLabel(match))}${match.stadium_name
+                    ? `<small>${escapeHtml(match.stadium_name)}</small>` : ''}</span>
+                ${team('home', 'home')}
+                <span class="cal-score">${match.is_played ? `${match.home_score}:${match.away_score}` : 'vs'}${pens}</span>
+                ${team('away', 'away')}
+            </button>`;
+    }
+
+    function renderCalendar(data) {
+        const host = byId('boardCalendar');
+        const all = (data.blocks || []).flatMap((block) => block.matches)
+            .concat(data.playoff || [], data.placement || [])
+            .filter((match) => !match.is_bye);
+        if (!all.length) {
+            host.innerHTML = '';
+            return;
+        }
+        const onlyOpen = board.calendarOpenOnly;
+        const list = all.filter((match) => !onlyOpen || !match.is_played);
+        const timed = list.some((match) => match.kickoff_at);
+        const order = { group: 0, playoff: 1, placement: 2 };
+        list.sort((a, b) => (a.kickoff_at || '9999').localeCompare(b.kickoff_at || '9999')
+            || order[a.stage] - order[b.stage] || a.round_no - b.round_no || a.id - b.id);
+        const groups = new Map();
+        list.forEach((match) => {
+            const key = match.kickoff_at ? match.kickoff_at.slice(0, 10)
+                : match.stage === 'group' ? `round-${match.round_no}` : `stage-${match.stage}-${match.round_no}`;
+            const title = match.kickoff_at ? dayTitle(match.kickoff_at)
+                : match.stage === 'group' ? `Тур ${match.round_no} · время не назначено`
+                    : `${match.label || 'Плей-офф'} · время не назначено`;
+            if (!groups.has(key)) groups.set(key, { title, matches: [] });
+            groups.get(key).matches.push(match);
+        });
+        const played = all.filter((match) => match.is_played).length;
+        host.innerHTML = `
+            <header class="cal-head">
+                <div>
+                    <h3 class="board-title">Календарь матчей</h3>
+                    <span class="cal-sub">Сыграно ${played} из ${all.length}${timed ? '' : ' · время ещё не расставлено'}</span>
+                </div>
+                <div class="cal-tools">
+                    <div class="leaders-switch" role="group" aria-label="Какие матчи показать">
+                        <button type="button" data-cal-filter="all" class="${onlyOpen ? '' : 'active'}">Все</button>
+                        <button type="button" data-cal-filter="open" class="${onlyOpen ? 'active' : ''}">Не сыгранные</button>
+                    </div>
+                    <button type="button" class="btn-secondary" data-cal-schedule>
+                        <i data-lucide="calendar-clock"></i>${timed ? 'Изменить расписание' : 'Расставить по времени'}</button>
+                </div>
+            </header>
+            ${list.length ? [...groups.values()].map((group) => `
+                <div class="cal-day">
+                    <p class="cal-day-title">${escapeHtml(group.title)}</p>
+                    <div class="cal-list">${group.matches.map(calendarRowMarkup).join('')}</div>
+                </div>`).join('') : '<p class="leaders-empty">Все матчи сыграны.</p>'}
+            <p class="cal-hint">Нажмите на матч, чтобы поставить счёт, время и стадион.</p>`;
+        refreshIcons();
+    }
+
     /* --- Ввод счёта прямо на полотне --- */
 
     function findMatch(id) {
@@ -839,6 +931,7 @@
         placementInput.disabled = placementPlayed;
         byId('boardDrawBtn').querySelector('span').textContent = data.built ? 'Новая жеребьёвка' : 'Жеребьёвка';
         renderGroupsBoard(data);
+        renderCalendar(data);
         renderBracket(data);
         refreshIcons();
         // Линии считаются по реальным размерам карточек — после отрисовки.
@@ -859,6 +952,15 @@
         });
         byId('boardBuildBtn').addEventListener('click', () => build(false));
         byId('boardScheduleBtn').addEventListener('click', openScheduleDialog);
+        byId('boardCalendar').addEventListener('click', (event) => {
+            const filter = event.target.closest('[data-cal-filter]');
+            if (filter) {
+                board.calendarOpenOnly = filter.dataset.calFilter === 'open';
+                renderCalendar(categoryOverview());
+                return;
+            }
+            if (event.target.closest('[data-cal-schedule]')) openScheduleDialog();
+        });
         byId('boardResetBtn').addEventListener('click', () => resetCategory().catch(showPageError));
         const panel = byId('boardPanel');
         bindDragBoard(panel, {

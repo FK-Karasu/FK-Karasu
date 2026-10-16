@@ -17669,3 +17669,114 @@ table.stat-table tr.stat-muted td { opacity: .5; }
     color: #fff !important;
     box-shadow: none !important;
 }
+
+/* --- Календарь матчей на полотне --- */
+.board-calendar:empty { display: none; }
+
+.board-calendar {
+    padding: 16px 18px;
+    border: 1px solid #ecebe9;
+    border-radius: 14px;
+    background: #fff;
+}
+
+.cal-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.cal-head .board-title { margin: 0; }
+.cal-sub { color: #969ca6; font-size: 12.5px; }
+.cal-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+#tournamentEntriesModal .cal-tools .btn-secondary {
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 14px !important;
+    font-size: 13px !important;
+}
+
+.cal-day + .cal-day { margin-top: 14px; }
+
+.cal-day-title {
+    margin: 10px 0 6px;
+    color: #b45f09;
+    font-size: 12px;
+    font-weight: 750;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+}
+
+.cal-list { display: grid; gap: 6px; }
+
+#tournamentEntriesModal .cal-row {
+    display: grid !important;
+    grid-template-columns: 56px minmax(120px, 170px) minmax(0, 1fr) 70px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: auto !important;
+    min-height: 48px !important;
+    padding: 6px 12px !important;
+    border: 1px solid #efedea !important;
+    border-radius: 10px !important;
+    background: #fbfaf9 !important;
+    box-shadow: none !important;
+    color: #17191f !important;
+    font-size: 13.5px !important;
+    font-weight: 500 !important;
+    text-align: left;
+    cursor: pointer;
+}
+
+#tournamentEntriesModal .cal-row:hover:not(:disabled) { border-color: #ffb066 !important; background: #fff7ed !important; }
+#tournamentEntriesModal .cal-row.played { background: #fff !important; }
+#tournamentEntriesModal .cal-row:disabled { cursor: default; opacity: .75; }
+
+.cal-time { font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.cal-stage {
+    display: grid;
+    color: #5f6673;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.cal-stage small { color: #969ca6; font-weight: 500; }
+
+.cal-team {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-weight: 650;
+}
+
+.cal-team.home { justify-content: flex-end; text-align: right; }
+.cal-team.pending { color: #969ca6; font-weight: 500; }
+.cal-team.win { color: #0f7a4a; }
+.cal-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-team .board-logo { flex: 0 0 24px; width: 24px; height: 24px; font-size: 9px; }
+
+.cal-score {
+    display: grid;
+    justify-items: center;
+    padding: 4px 0;
+    border-radius: 8px;
+    background: #f1efed;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.cal-row.played .cal-score { background: #17191f; color: #fff; }
+.cal-score small { font-size: 10px; font-weight: 600; opacity: .8; }
+.cal-hint { margin: 10px 0 0; color: #969ca6; font-size: 12px; }
+
+@media (max-width: 760px) {
+    #tournamentEntriesModal .cal-row { grid-template-columns: 48px minmax(0, 1fr) 56px minmax(0, 1fr); }
+    .cal-stage { display: none; }
+}
