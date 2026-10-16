@@ -1475,6 +1475,7 @@ async function loadCategory() {
 }
 
 function renderCategory() {
+    renderTiebreak();
     renderSteps();
     renderScheme();
     renderGroups();
@@ -1529,7 +1530,6 @@ function fillFormatForm(settings) {
     byId('formatGroups').value = settings.groups;
     byId('formatAdvance').value = String(settings.advance);
     byId('formatLegs').value = String(settings.legs);
-    byId('formatTiebreak').value = settings.tiebreak;
     byId('formatThird').checked = Boolean(settings.third_place);
 }
 
@@ -1540,7 +1540,6 @@ function readFormatForm() {
         groups: Number(byId('formatGroups').value) || 1,
         advance: Number(byId('formatAdvance').value) || 2,
         legs: Number(byId('formatLegs').value) || 1,
-        tiebreak: byId('formatTiebreak').value,
         third_place: byId('formatThird').checked,
     };
 }
@@ -1629,7 +1628,6 @@ function renderScheme() {
         groups: settings.format === 'groups_playoff',
         advance: settings.format === 'groups_playoff',
         legs: settings.format !== 'knockout',
-        tiebreak: settings.format !== 'knockout',
         third_place: settings.format !== 'league',
         more: settings.format !== 'knockout',
     };
@@ -1674,8 +1672,56 @@ function renderScheme() {
 
 function pickSettings(settings) {
     if (!settings) return null;
-    const { format, groups, advance, legs, tiebreak, third_place: third } = settings;
-    return { format, groups, advance, legs, tiebreak, third };
+    const { format, groups, advance, legs, third_place: third } = settings;
+    return { format, groups, advance, legs, third };
+}
+
+const TIEBREAK_OPTIONS = [
+    { key: 'h2h', title: 'По личным встречам', hint: 'Выше тот, кто выиграл матч между ними' },
+    { key: 'overall', title: 'По разнице мячей', hint: 'Выше тот, у кого лучше разница во всех матчах группы' },
+];
+
+function tiebreakTitle(key) {
+    return key === 'overall' ? 'разница мячей' : 'личные встречи';
+}
+
+function tiebreakNoteMarkup() {
+    const rule = categoryOverview()?.rules?.tiebreak;
+    return rule ? `<p class="tiebreak-note">При равенстве очков: ${escapeHtml(tiebreakTitle(rule))}</p>` : '';
+}
+
+function renderTiebreak() {
+    const data = categoryOverview();
+    const current = data?.rules?.tiebreak || 'h2h';
+    const locked = Boolean(data?.rules_locked);
+    document.querySelectorAll('[data-tiebreak-host]').forEach((host) => {
+        host.innerHTML = TIEBREAK_OPTIONS.map((option) => `
+            <button type="button" class="tiebreak-option${option.key === current ? ' active' : ''}"
+                data-tiebreak="${option.key}" aria-pressed="${option.key === current}"
+                ${locked && option.key !== current ? 'disabled' : ''}>
+                <strong>${escapeHtml(option.title)}</strong>
+                <small>${escapeHtml(option.hint)}</small>
+            </button>`).join('')
+            + (locked ? '<p class="tiebreak-locked">Закреплено: матчи уже идут.</p>' : '');
+    });
+    // В олимпийской системе таблиц нет — правило не нужно.
+    const knockout = data?.settings?.format === 'knockout';
+    byId('tiebreakBlock').hidden = knockout;
+    byId('boardTiebreak').hidden = knockout || !data?.groups?.length;
+}
+
+async function setTiebreak(key) {
+    const data = categoryOverview();
+    if (!data || data.rules?.tiebreak === key) return;
+    try {
+        await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/rules`, {
+            method: 'PUT',
+            body: JSON.stringify({ tiebreak: key }),
+        });
+        await loadCategory();
+    } catch (error) {
+        showPageError(error);
+    }
 }
 
 let formatSaveTimer = null;
@@ -2037,6 +2083,7 @@ function renderMatches() {
                 ${block.standings.length ? standingsMarkup(block.standings) : ''}
                 ${!league && advance && catalogState.playoffMatches.length
                     ? `<p class="standings-legend"><i></i> выходят в плей-офф (${advance} из группы)</p>` : ''}
+                ${block.standings.length ? tiebreakNoteMarkup() : ''}
                 ${[...byRound.entries()].map(([round, matches]) => `
                     <div class="match-round-block">
                         <p class="match-round-title">Тур ${round}</p>
@@ -3414,6 +3461,10 @@ function bindEvents() {
         if (button) switchCategory(button.dataset.category).catch(showPageError);
     });
     byId('formatCards').addEventListener('change', onFormatChange);
+    byId('tournamentEntriesModal').addEventListener('click', (event) => {
+        const option = event.target.closest('[data-tiebreak]');
+        if (option && !option.disabled) setTiebreak(option.dataset.tiebreak);
+    });
     byId('formatOptions').addEventListener('change', onFormatChange);
     byId('formatGroups').addEventListener('input', onFormatChange);
     byId('buildDrawBtn').addEventListener('click', () => buildCategory(true).catch(showPageError));

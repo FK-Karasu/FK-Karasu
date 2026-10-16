@@ -765,6 +765,7 @@
 
             .sheet-poster { height: 180px; }
         }
+        .tiebreak-note { margin: 6px 0 0; color: #8a8f99; font-size: 12px; }
     </style>
 </head>
 
@@ -1230,7 +1231,7 @@
             return category.groups.map((group) => `
                 <div class="grp-block">
                     <p class="grp-title">${groupTitle(category, group)}</p>
-                    ${group.standings.length ? standingsMarkup(group.standings) : ''}
+                    ${group.standings.length ? standingsMarkup(group.standings) + (category.tiebreak_title ? `<p class="tiebreak-note">При равенстве очков: ${escapeHtml(category.tiebreak_title)}</p>` : '') : ''}
                     ${group.matches.length
                         ? `<div class="fixtures">${group.matches.map(fixtureMarkup).join('')}</div>`
                         : ''}
@@ -1296,7 +1297,7 @@
                     ? category.groups.map((group) => `
                         <div class="grp-block">
                             <p class="grp-title">${groupTitle(category, group)}</p>
-                            ${group.standings.length ? standingsMarkup(group.standings) : ''}
+                            ${group.standings.length ? standingsMarkup(group.standings) + (category.tiebreak_title ? `<p class="tiebreak-note">При равенстве очков: ${escapeHtml(category.tiebreak_title)}</p>` : '') : ''}
                             ${group.matches.length
                                 ? `<div class="fixtures">${group.matches.map(fixtureMarkup).join('')}</div>`
                                 : ''}

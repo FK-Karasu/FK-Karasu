@@ -5801,14 +5801,27 @@ def tournament_entry_detail_api(entry_id):
 #   * если подходят две (A и B одного возраста) — выбирает тренер/организатор;
 #   * один игрок — одна категория на турнир.
 
+TIEBREAK_TITLES = {
+    tournament_engine.TIEBREAK_H2H: 'личные встречи',
+    tournament_engine.TIEBREAK_OVERALL: 'разница мячей',
+}
+
+
 def tournament_rules(tournament):
     try:
         data = json.loads(tournament.formats or '{}')
     except Exception:
         data = {}
-    rules = data.get('_rules') if isinstance(data, dict) else None
-    rules = rules if isinstance(rules, dict) else {}
-    return {'allow_play_up': bool(rules.get('allow_play_up'))}
+    data = data if isinstance(data, dict) else {}
+    rules = data.get('_rules') if isinstance(data.get('_rules'), dict) else {}
+    tiebreak = rules.get('tiebreak')
+    if tiebreak not in TIEBREAK_TITLES:
+        # Турниры, созданные до общего правила: берём то, что было выбрано в категориях.
+        legacy = [value.get('tiebreak') for key, value in data.items()
+                  if key != '_rules' and isinstance(value, dict)]
+        tiebreak = next((value for value in legacy if value in TIEBREAK_TITLES),
+                        tournament_engine.TIEBREAK_H2H)
+    return {'allow_play_up': bool(rules.get('allow_play_up')), 'tiebreak': tiebreak}
 
 
 def save_tournament_rules(tournament, rules):
@@ -5818,9 +5831,14 @@ def save_tournament_rules(tournament, rules):
         data = {}
     if not isinstance(data, dict):
         data = {}
-    data['_rules'] = {'allow_play_up': bool(rules.get('allow_play_up'))}
+    current = tournament_rules(tournament)
+    merged = {
+        'allow_play_up': bool(rules.get('allow_play_up', current['allow_play_up'])),
+        'tiebreak': rules.get('tiebreak') if rules.get('tiebreak') in TIEBREAK_TITLES else current['tiebreak'],
+    }
+    data['_rules'] = merged
     tournament.formats = json.dumps(data, ensure_ascii=False)
-    return data['_rules']
+    return merged
 
 
 def member_birth_year(member):
@@ -6094,6 +6112,13 @@ def tournament_rules_api(tournament_id):
         return jsonify({'success': False, 'message': 'Нет доступа'}), 403
     tournament = Tournament.query.filter_by(id=tournament_id).first_or_404()
     data = request.get_json() or {}
+    current = tournament_rules(tournament)
+    if data.get('tiebreak') and data['tiebreak'] != current['tiebreak'] and TournamentMatch.query.filter(
+            TournamentMatch.tournament_id == tournament.id,
+            TournamentMatch.home_score.isnot(None)).first():
+        return jsonify({'success': False, 'message':
+                        'Матчи уже идут — правило при равенстве очков закреплено, '
+                        'иначе места в таблицах поменяются посреди турнира.'}), 409
     rules = save_tournament_rules(tournament, data)
     db.session.commit()
     return jsonify({'success': True, 'rules': rules})
@@ -6122,7 +6147,10 @@ def category_settings(tournament, age_group):
     except Exception:
         data = {}
     raw = data.get(age_group) if isinstance(data, dict) else None
-    return tournament_engine.normalize_settings(raw)
+    settings = tournament_engine.normalize_settings(raw)
+    # Правило при равенстве очков одно на весь турнир — для всех групп и категорий.
+    settings['tiebreak'] = tournament_rules(tournament)['tiebreak']
+    return settings
 
 
 def save_category_settings(tournament, age_group, settings):
@@ -6711,6 +6739,10 @@ def category_overview(tournament, age_group):
         'results': results,
         'stadiums': [{'id': s.id, 'name': s.name}
                      for s in TournamentStadium.query.order_by(TournamentStadium.name.asc()).all()],
+        'rules': tournament_rules(tournament),
+        'rules_locked': TournamentMatch.query.filter(
+            TournamentMatch.tournament_id == tournament.id,
+            TournamentMatch.home_score.isnot(None)).first() is not None,
     }
 
 
@@ -7815,6 +7847,7 @@ def public_tournament_detail_api(tournament_id):
             'age_group': age_group,
             'format': settings['format'],
             'format_title': tournament_engine.FORMAT_TITLES[settings['format']],
+            'tiebreak_title': TIEBREAK_TITLES[settings['tiebreak']],
             'teams': [public_team(e) for e in age_entries],
             'groups': blocks,
             'playoff': [dict(public_match(m), label=m.label) for m in age_playoff],

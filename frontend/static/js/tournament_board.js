@@ -198,6 +198,7 @@
                         <th title="Очки">О</th><th title="Место">М</th></tr></thead>
                     <tbody>${body}</tbody>
                 </table>
+                ${tiebreakNoteMarkup()}
             </div>`;
     }
 

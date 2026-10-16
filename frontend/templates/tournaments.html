@@ -8,7 +8,7 @@
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101610">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101701">
 </head>
 <body>
     {% include '_sidebar.html' %}
@@ -375,6 +375,11 @@
                             <button class="board-reset" type="button" id="boardResetBtn">Сбросить</button>
                         </div>
                     </section>
+                    <section class="tiebreak-block board-tiebreak" id="boardTiebreak">
+                        <p class="tiebreak-label">При равенстве очков
+                            <small>для всех групп и категорий</small></p>
+                        <div class="tiebreak-options" data-tiebreak-host></div>
+                    </section>
                     <div class="tournament-catalog-form-error" id="boardError" hidden></div>
                     <section class="board-pool" id="boardPool" data-cell data-group-index="" aria-label="Команды без места"></section>
                     <div class="board-groups" id="boardGroups"></div>
@@ -443,6 +448,12 @@
                         </div>
                     </section>
 
+                    <section class="scheme-section tiebreak-block" id="tiebreakBlock">
+                        <p class="tiebreak-label">При равенстве очков
+                            <small>одно правило для всех групп и категорий турнира</small></p>
+                        <div class="tiebreak-options" data-tiebreak-host></div>
+                    </section>
+
                     <section class="scheme-section scheme-options" id="formatOptions">
                         <label class="tournament-catalog-field" data-option="groups">
                             <span>Групп</span>
@@ -462,7 +473,7 @@
                             <span>Матч за 3 место</span>
                         </label>
                         <details class="scheme-more" data-option="more">
-                            <summary>Дополнительно: круги и равенство очков</summary>
+                            <summary>Дополнительно: один или два круга</summary>
                             <div class="scheme-more-body">
                         <label class="tournament-catalog-field" data-option="legs">
                             <span>Кругов</span>
@@ -471,13 +482,7 @@
                                 <option value="2">Два круга (дома и в гостях)</option>
                             </select>
                         </label>
-                        <label class="tournament-catalog-field" data-option="tiebreak">
-                            <span>При равенстве очков</span>
-                            <select id="formatTiebreak">
-                                <option value="h2h">Сначала личная встреча</option>
-                                <option value="overall">Сначала разница мячей</option>
-                            </select>
-                        </label>
+                        
                             </div>
                         </details>
                     </section>
@@ -1060,8 +1065,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}?v=2026080801"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101606"></script>
-    <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101603"></script>
-    <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101605"></script>
+    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101701"></script>
+    <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101701"></script>
+    <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101701"></script>
 </body>
 </html>
