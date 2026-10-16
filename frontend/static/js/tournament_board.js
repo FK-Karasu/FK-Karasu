@@ -51,7 +51,15 @@
         return size;
     }
 
-    function templatesFor(count) {
+    function placementCount(sizes, advance) {
+        let total = 0;
+        for (let level = advance + 1; level <= Math.max(...sizes); level += 1) {
+            total += Math.floor(sizes.filter((size) => size >= level).length / 2);
+        }
+        return total;
+    }
+
+    function templatesFor(count, withPlacement = true) {
         const list = [];
         if (count < 2) return list;
         const rr = (size) => (size * (size - 1)) / 2;
@@ -66,7 +74,8 @@
             const sizes = splitSizes(count, groups);
             const advance = groups * 2 > 16 ? 1 : 2;
             const qualified = groups * advance;
-            const matches = sizes.reduce((sum, size) => sum + rr(size), 0) + qualified - 1 + (qualified >= 4 ? 1 : 0);
+            const matches = sizes.reduce((sum, size) => sum + rr(size), 0) + qualified - 1 + (qualified >= 4 ? 1 : 0)
+                + (withPlacement ? placementCount(sizes, advance) : 0);
             const min = Math.min(...sizes);
             const max = Math.max(...sizes);
             list.push({
@@ -308,8 +317,17 @@
     function renderBracket(data) {
         const wrap = byId('boardBracketWrap');
         const matches = data.playoff || [];
-        wrap.hidden = !matches.length;
-        if (!matches.length) return;
+        const placement = data.placement || [];
+        wrap.hidden = !matches.length && !placement.length;
+        byId('boardPlacement').innerHTML = placement.length ? `
+            <p class="bk-round-title">Матчи за места</p>
+            <div class="bk-placement-list">${placement.map((match) => `
+                <div class="bk-slot">${bracketMatchMarkup(match, match.label)}</div>`).join('')}</div>` : '';
+        if (!matches.length) {
+            byId('boardBracket').innerHTML = '';
+            byId('boardResults').innerHTML = '';
+            return;
+        }
         const bronze = matches.find((match) => match.label === 'За 3 место');
         const main = matches.filter((match) => match !== bronze);
         const rounds = [];
@@ -352,7 +370,8 @@
     function findMatch(id) {
         const data = categoryOverview();
         if (!data) return null;
-        const all = (data.blocks || []).flatMap((block) => block.matches).concat(data.playoff || []);
+        const all = (data.blocks || []).flatMap((block) => block.matches)
+            .concat(data.playoff || [], data.placement || []);
         return all.find((match) => Number(match.id) === Number(id)) || null;
     }
 
@@ -639,6 +658,29 @@
         }
     }
 
+    async function togglePlacement(enabled) {
+        const data = categoryOverview();
+        if (!data) return;
+        try {
+            showFormError('boardError');
+            await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/format`, {
+                method: 'PUT',
+                body: JSON.stringify({ age_group: catalogState.age, settings: { ...data.settings, placement: enabled } }),
+            });
+            // Календарь уже есть — пересобираем по тем же ячейкам, чтобы матчи за места появились или исчезли.
+            if (data.built) {
+                await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/build`, {
+                    method: 'POST',
+                    body: JSON.stringify({ age_group: catalogState.age, draw: false }),
+                });
+            }
+            await loadCategory();
+        } catch (error) {
+            showFormError('boardError', error.message);
+            await loadCategory();
+        }
+    }
+
     async function build(draw) {
         const data = categoryOverview();
         if (data?.built && !window.confirm(draw
@@ -660,7 +702,7 @@
     function renderTemplates(data) {
         const host = byId('boardTemplates');
         const count = data?.counts?.confirmed || 0;
-        const list = templatesFor(count);
+        const list = templatesFor(count, data?.settings?.placement !== false);
         const active = activeTemplateKey(data);
         const locked = Boolean(data?.has_results);
         host.innerHTML = list.length ? list.map((template) => `
@@ -686,6 +728,11 @@
         byId('boardBuildBtn').disabled = locked;
         byId('boardScheduleBtn').hidden = !data.built;
         byId('boardResetBtn').hidden = !data.built;
+        const placementBox = byId('boardPlacementField');
+        placementBox.hidden = data.settings.format !== 'groups_playoff';
+        const placementInput = placementBox.querySelector('input');
+        placementInput.checked = data.settings.placement !== false;
+        placementInput.disabled = locked;
         byId('boardDrawBtn').querySelector('span').textContent = data.built ? 'Новая жеребьёвка' : 'Жеребьёвка';
         renderGroupsBoard(data);
         renderBracket(data);
@@ -704,6 +751,7 @@
             if (template) applyTemplate(template);
         });
         byId('boardDrawBtn').addEventListener('click', () => build(true));
+        byId('boardPlacementField').addEventListener('change', (event) => togglePlacement(event.target.checked));
         byId('boardBuildBtn').addEventListener('click', () => build(false));
         byId('boardScheduleBtn').addEventListener('click', openScheduleDialog);
         byId('boardResetBtn').addEventListener('click', () => resetCategory().catch(showPageError));

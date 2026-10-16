@@ -942,6 +942,8 @@ class TournamentMatch(db.Model):
 
     STAGE_GROUP = 'group'
     STAGE_PLAYOFF = 'playoff'
+    # Матчи за 5-е, 7-е и т. д. места для тех, кто не вышел из группы.
+    STAGE_PLACEMENT = 'placement'
 
     id = db.Column(db.Integer, primary_key=True)
     tournament_id = db.Column(db.Integer, db.ForeignKey('tournaments.id'), nullable=False, index=True)

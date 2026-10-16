@@ -1201,10 +1201,21 @@
                 : '<p class="lead" style="margin:0">Протоколы матчей ещё не заполнены.</p>';
         }
 
+        function placementMarkup(category) {
+            const items = category.placement || [];
+            if (!items.length) return '';
+            return `<div class="grp-block">
+                <p class="grp-title">Матчи за места</p>
+                ${items.map((m) => `<p class="grp-title" style="margin-top:8px;font-size:12px">${escapeHtml(m.label || '')}</p>
+                    <div class="fixtures">${fixtureMarkup(m)}</div>`).join('')}
+            </div>`;
+        }
+
         function playoffPane(category) {
             const matches = category.playoff || [];
             if (!matches.length) {
-                return '<p class="lead" style="margin:0">Плей-офф ещё не сформирован.</p>';
+                return placementMarkup(category)
+                    || '<p class="lead" style="margin:0">Плей-офф ещё не сформирован.</p>';
             }
             return `
                 <div class="view-switch">
@@ -1213,7 +1224,8 @@
                 </div>
                 ${state.bracket
                     ? '<div id="bracketHost" class="bracket-host"></div>'
-                    : playoffMarkup(matches)}`;
+                    : playoffMarkup(matches)}
+                ${placementMarkup(category)}`;
         }
 
         function tablesPane(category) {
@@ -1258,7 +1270,7 @@
                 ['tables', category.format === 'knockout' ? 'Участники' : 'Таблицы'],
                 ['playoff', 'Плей-офф'],
                 ['players', 'Игроки'],
-            ].filter(([key]) => key !== 'playoff' || (category.playoff || []).length);
+            ].filter(([key]) => key !== 'playoff' || (category.playoff || []).length || (category.placement || []).length);
             if (!tabs.some(([key]) => key === state.sheetTab)) state.sheetTab = tabs[0][0];
             return `
                 ${categories.length > 1 ? `
@@ -1317,6 +1329,7 @@
                         ${resultsMarkup(category.results || [])}
                         ${body}
                         ${playoffMarkup(category.playoff || [])}
+                        ${placementMarkup(category)}
                     </div>`;
             }).join('');
         }

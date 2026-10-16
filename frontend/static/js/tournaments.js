@@ -1531,6 +1531,7 @@ function fillFormatForm(settings) {
     byId('formatAdvance').value = String(settings.advance);
     byId('formatLegs').value = String(settings.legs);
     byId('formatThird').checked = Boolean(settings.third_place);
+    byId('formatPlacement').checked = settings.placement !== false;
 }
 
 function readFormatForm() {
@@ -1541,6 +1542,7 @@ function readFormatForm() {
         advance: Number(byId('formatAdvance').value) || 2,
         legs: Number(byId('formatLegs').value) || 1,
         third_place: byId('formatThird').checked,
+        placement: byId('formatPlacement').checked,
     };
 }
 
@@ -1562,6 +1564,8 @@ function describePlan(teams, settings) {
     let groupMatches = 0;
     let playoffMatches = 0;
     let qualified = 0;
+    let placementMatches = 0;
+    let placementFrom = 0;
     if (teams < 2) {
         return { steps, warnings: ['Нужно минимум 2 подтверждённые команды'], groupMatches, playoffMatches };
     }
@@ -1586,6 +1590,16 @@ function describePlan(teams, settings) {
         if (advance !== settings.advance) warnings.push(`Из группы на ${min} команды выходят не больше ${advance}`);
         qualified = groups * advance;
         steps.push(`Из каждой группы выходят ${advance} → ${pluralizeTeams(qualified)} в плей-офф`);
+        if (settings.placement) {
+            // Как placement_plan на сервере: уровни ниже выхода играют пары за места.
+            let first = qualified + 1;
+            for (let level = advance + 1; level <= max; level += 1) {
+                const teamsAtLevel = sizes.filter((size) => size >= level).length;
+                placementMatches += Math.floor(teamsAtLevel / 2);
+                if (!placementFrom && teamsAtLevel >= 2) placementFrom = first;
+                first += teamsAtLevel;
+            }
+        }
     } else {
         qualified = teams;
         steps.push(`${pluralizeTeams(teams)} по жребию, проигравший выбывает`);
@@ -1603,6 +1617,10 @@ function describePlan(teams, settings) {
         } else {
             steps.push('Финал определяет победителя');
         }
+    }
+    if (placementMatches) {
+        steps.push(`Остальные разыгрывают места с ${placementFrom}-го: ${pluralizeMatches(placementMatches)}`);
+        playoffMatches += placementMatches;
     }
     return { steps, warnings, groupMatches, playoffMatches };
 }
@@ -1629,6 +1647,7 @@ function renderScheme() {
         advance: settings.format === 'groups_playoff',
         legs: settings.format !== 'knockout',
         third_place: settings.format !== 'league',
+        placement: settings.format === 'groups_playoff',
         more: settings.format !== 'knockout',
     };
     document.querySelectorAll('#formatOptions [data-option]').forEach((field) => {
@@ -1672,8 +1691,8 @@ function renderScheme() {
 
 function pickSettings(settings) {
     if (!settings) return null;
-    const { format, groups, advance, legs, third_place: third } = settings;
-    return { format, groups, advance, legs, third };
+    const { format, groups, advance, legs, third_place: third, placement } = settings;
+    return { format, groups, advance, legs, third, placement: placement !== false };
 }
 
 const TIEBREAK_OPTIONS = [
@@ -1694,15 +1713,19 @@ function renderTiebreak() {
     const data = categoryOverview();
     const current = data?.rules?.tiebreak || 'h2h';
     const locked = Boolean(data?.rules_locked);
+    const help = TIEBREAK_OPTIONS.map((option) => `${option.title}: ${option.hint.toLowerCase()}.`).join('\n')
+        + '\nПравило одно для всех групп и категорий турнира.';
     document.querySelectorAll('[data-tiebreak-host]').forEach((host) => {
-        host.innerHTML = TIEBREAK_OPTIONS.map((option) => `
-            <button type="button" class="tiebreak-option${option.key === current ? ' active' : ''}"
-                data-tiebreak="${option.key}" aria-pressed="${option.key === current}"
-                ${locked && option.key !== current ? 'disabled' : ''}>
-                <strong>${escapeHtml(option.title)}</strong>
-                <small>${escapeHtml(option.hint)}</small>
-            </button>`).join('')
-            + (locked ? '<p class="tiebreak-locked">Закреплено: матчи уже идут.</p>' : '');
+        host.innerHTML = `
+            <label class="tiebreak-inline" title="${escapeHtml(help)}">
+                <span>При равенстве очков</span>
+                <select data-tiebreak-select ${locked ? 'disabled' : ''} aria-label="Правило при равенстве очков">
+                    ${TIEBREAK_OPTIONS.map((option) => `<option value="${option.key}" ${option.key === current
+                        ? 'selected' : ''}>${escapeHtml(option.title.toLowerCase())}</option>`).join('')}
+                </select>
+                <i class="tiebreak-help" aria-hidden="true">?</i>
+                ${locked ? '<small>закреплено — матчи идут</small>' : ''}
+            </label>`;
     });
     // В олимпийской системе таблиц нет — правило не нужно.
     const knockout = data?.settings?.format === 'knockout';
@@ -2229,7 +2252,8 @@ function playoffMatchMarkup(match, number) {
     const draw = ready && match.home_score !== null && match.home_score === match.away_score;
     return `
         <div class="po-match${match.is_played ? ' played' : ''}${ready ? '' : ' waiting'}" data-match="${match.id}">
-            <span class="po-number">${number}</span>
+            <span class="po-number" title="${escapeHtml(match.label || '')}">${match.stage === 'placement'
+                ? escapeHtml(String(match.bracket_slot)) + '-е' : number}</span>
             ${playoffSideMarkup(match.home, winner && winner === match.home.entry_id)}
             <span class="po-score">
                 <input type="number" min="0" max="99" inputmode="numeric" data-score="home" ${ready ? '' : 'disabled'}
@@ -2270,7 +2294,7 @@ function renderPlayoff() {
     const matches = catalogState.playoffMatches;
     byId('playoffProgress').innerHTML = data?.counts?.playoff_matches
         ? progressMarkup(data.counts.playoff_played, data.counts.playoff_matches, 'Сыграно матчей') : '';
-    if (!matches.length) {
+    if (!matches.length && !(data?.placement || []).length) {
         board.innerHTML = emptyCatalogMarkup(
             'git-branch',
             'Сетка ещё не создана',
@@ -2296,6 +2320,14 @@ function renderPlayoff() {
             ${items.map((match) => playoffMatchMarkup(match, match.is_bye ? '' : ++counter)).join('')}
         </section>`).join('')}</div>`;
 
+    const placement = categoryOverview()?.placement || [];
+    if (placement.length) {
+        board.insertAdjacentHTML('beforeend', `
+            <section class="po-round po-placement">
+                <h3 class="entry-group-title">Матчи за места</h3>
+                ${placement.map((match) => playoffMatchMarkup(match, ++counter)).join('')}
+            </section>`);
+    }
     const results = catalogState.playoffResults;
     if (results.length) board.insertAdjacentHTML('afterbegin', resultsMarkup(results));
     refreshIcons();
@@ -3461,9 +3493,9 @@ function bindEvents() {
         if (button) switchCategory(button.dataset.category).catch(showPageError);
     });
     byId('formatCards').addEventListener('change', onFormatChange);
-    byId('tournamentEntriesModal').addEventListener('click', (event) => {
-        const option = event.target.closest('[data-tiebreak]');
-        if (option && !option.disabled) setTiebreak(option.dataset.tiebreak);
+    byId('tournamentEntriesModal').addEventListener('change', (event) => {
+        const select = event.target.closest('[data-tiebreak-select]');
+        if (select) setTiebreak(select.value);
     });
     byId('formatOptions').addEventListener('change', onFormatChange);
     byId('formatGroups').addEventListener('input', onFormatChange);

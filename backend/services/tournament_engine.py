@@ -31,6 +31,7 @@ DEFAULT_SETTINGS = {
     'groups': 2,
     'advance': 2,
     'third_place': True,
+    'placement': True,
     'legs': 1,
     'tiebreak': TIEBREAK_H2H,
     'win_points': 3,
@@ -63,6 +64,8 @@ def normalize_settings(raw):
     number('draw_points', 0, 3)
     if 'third_place' in raw:
         out['third_place'] = bool(raw.get('third_place'))
+    if 'placement' in raw:
+        out['placement'] = bool(raw.get('placement'))
     if raw.get('tiebreak') in (TIEBREAK_H2H, TIEBREAK_OVERALL):
         out['tiebreak'] = raw['tiebreak']
 
@@ -95,6 +98,29 @@ def knockout_round_name(matches_in_round):
     return names.get(matches_in_round, f'1/{matches_in_round} финала')
 
 
+def placement_plan(sizes, advance):
+    """Матчи за места для невышедших: уровень → сколько команд и матчей.
+
+    Возвращает список (уровень, первое разыгрываемое место, команд, матчей).
+    """
+    plan = []
+    base = len(sizes) * advance + 1
+    for level in range(advance + 1, max(sizes or [0]) + 1):
+        teams = sum(1 for size in sizes if size >= level)
+        if teams >= 1:
+            plan.append((level, base, teams, teams // 2))
+        base += teams
+    return plan
+
+
+def plural_matches(count):
+    if count % 10 == 1 and count % 100 != 11:
+        return 'матч'
+    if 2 <= count % 10 <= 4 and not 12 <= count % 100 <= 14:
+        return 'матча'
+    return 'матчей'
+
+
 def describe_plan(team_count, settings):
     """Человеческое описание схемы: сколько групп, кто выходит, сколько матчей.
 
@@ -106,6 +132,8 @@ def describe_plan(team_count, settings):
     warnings = []
     group_matches = 0
     playoff_matches = 0
+    placement_matches = 0
+    placement_from = 0
 
     if team_count < 2:
         return {'steps': [], 'warnings': ['Нужно минимум 2 подтверждённые команды'],
@@ -131,6 +159,10 @@ def describe_plan(team_count, settings):
             warnings.append(f'Из группы на {min(sizes)} команды выходят не больше {advance}')
         qualified = groups * advance
         steps.append(f'Из каждой группы выходят {advance} → {qualified} команд в плей-офф')
+        if s['placement']:
+            placement = placement_plan(sizes, advance)
+            placement_matches = sum(item[3] for item in placement)
+            placement_from = placement[0][1] if placement else 0
     else:
         qualified = team_count
         steps.append(f'{team_count} команд по жребию, проигравший выбывает')
@@ -149,6 +181,10 @@ def describe_plan(team_count, settings):
             steps.append('Финал и матч за 3 место')
         else:
             steps.append('Финал определяет победителя')
+    if placement_matches:
+        steps.append(f'Остальные разыгрывают места с {placement_from}-го: '
+                     f'{placement_matches} {plural_matches(placement_matches)}')
+        playoff_matches += placement_matches
 
     return {
         'steps': steps,

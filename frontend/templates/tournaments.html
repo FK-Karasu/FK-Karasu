@@ -8,7 +8,7 @@
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101704">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101706">
 </head>
 <body>
     {% include '_sidebar.html' %}
@@ -375,10 +375,12 @@
                             <button class="board-reset" type="button" id="boardResetBtn">Сбросить</button>
                         </div>
                     </section>
-                    <section class="tiebreak-block board-tiebreak" id="boardTiebreak">
-                        <p class="tiebreak-label">При равенстве очков
-                            <small>для всех групп и категорий</small></p>
-                        <div class="tiebreak-options" data-tiebreak-host></div>
+                    <section class="board-rules" id="boardRules">
+                        <div class="tiebreak-block" id="boardTiebreak"><div data-tiebreak-host></div></div>
+                        <label class="roster-switch" id="boardPlacementField">
+                            <input id="boardPlacementToggle" type="checkbox">
+                            <span>Матчи за 5-е и следующие места</span>
+                        </label>
                     </section>
                     <div class="tournament-catalog-form-error" id="boardError" hidden></div>
                     <section class="board-pool" id="boardPool" data-cell data-group-index="" aria-label="Команды без места"></section>
@@ -387,6 +389,7 @@
                         <h3 class="board-title">Плей-офф</h3>
                         <div class="board-results" id="boardResults"></div>
                         <div class="board-bracket" id="boardBracket"></div>
+                        <div class="board-placement" id="boardPlacement"></div>
                     </section>
                 </div>
 
@@ -449,9 +452,7 @@
                     </section>
 
                     <section class="scheme-section tiebreak-block" id="tiebreakBlock">
-                        <p class="tiebreak-label">При равенстве очков
-                            <small>одно правило для всех групп и категорий турнира</small></p>
-                        <div class="tiebreak-options" data-tiebreak-host></div>
+                        <div data-tiebreak-host></div>
                     </section>
 
                     <section class="scheme-section scheme-options" id="formatOptions">
@@ -468,10 +469,17 @@
                                 <option value="4">4 команды</option>
                             </select>
                         </label>
-                        <label class="roster-switch scheme-third" data-option="third_place">
-                            <input id="formatThird" type="checkbox" checked>
-                            <span>Матч за 3 место</span>
-                        </label>
+                        <div class="scheme-checks">
+                            <label class="roster-switch" data-option="third_place">
+                                <input id="formatThird" type="checkbox" checked>
+                                <span>Матч за 3 место</span>
+                            </label>
+                            <label class="roster-switch" data-option="placement"
+                                title="Команды, не вышедшие из групп, играют за 5-е, 7-е и следующие места">
+                                <input id="formatPlacement" type="checkbox" checked>
+                                <span>Матчи за 5-е и следующие места</span>
+                            </label>
+                        </div>
                         <details class="scheme-more" data-option="more">
                             <summary>Дополнительно: один или два круга</summary>
                             <div class="scheme-more-body">
@@ -1065,8 +1073,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}?v=2026080801"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101701"></script>
-    <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101705"></script>
-    <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101701"></script>
+    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101706"></script>
+    <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101707"></script>
+    <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101702"></script>
 </body>
 </html>

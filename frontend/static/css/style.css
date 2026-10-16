@@ -17067,3 +17067,85 @@ table.stat-table tr.stat-muted td { opacity: .5; }
     color: #969ca6;
     font-size: 12px;
 }
+
+/* --- Правило очков списком и матчи за места --- */
+
+.tiebreak-inline {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    color: #3d4350;
+    font-size: 13.5px;
+    font-weight: 600;
+}
+
+#tournamentEntriesModal .tiebreak-inline select {
+    width: auto !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 30px 0 10px !important;
+    border: 1px solid #e4e0dc !important;
+    border-radius: 9px !important;
+    background-color: #fff !important;
+    font-size: 13px !important;
+    font-weight: 650 !important;
+}
+
+.tiebreak-help {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #f1efed;
+    color: #5f6673;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 700;
+    cursor: help;
+}
+
+.tiebreak-inline small {
+    color: #969ca6;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.scheme-checks {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 18px;
+    align-self: end;
+    min-height: 42px;
+}
+
+.board-rules {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 22px;
+}
+
+.board-rules [hidden] { display: none !important; }
+
+.board-placement:empty { display: none; }
+
+.board-placement {
+    margin-top: 18px;
+}
+
+.bk-placement-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.bk-placement-list .bk-slot { flex: 0 0 210px; }
+.bk-placement-list .bk-slot::after { display: none; }
+
+.po-placement .po-number {
+    color: #b45f09;
+    font-weight: 750;
+}
