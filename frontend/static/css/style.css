@@ -17926,3 +17926,87 @@ table.stat-table tr.stat-muted td { opacity: .5; }
     .entry-pool-list { max-height: 300px; }
     .entry-pool-add { opacity: 1; }
 }
+
+/* --- Заявка: выбор нескольких команд --- */
+#tournamentEntriesModal .entry-pool-item {
+    grid-template-columns: 20px 34px minmax(0, 1fr) 30px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.entry-pool-item.selected { background: #fff7ed !important; box-shadow: inset 0 0 0 1px #ffd9b0 !important; }
+.entry-pool-item:hover { background: #fbfaf9 !important; }
+
+#tournamentEntriesModal .entry-pool-add {
+    width: 30px !important;
+    min-width: 30px !important;
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 50% !important;
+    background: #fff1df !important;
+    color: #b45f09 !important;
+    box-shadow: none !important;
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    opacity: 0;
+    cursor: pointer;
+}
+
+#tournamentEntriesModal .entry-pool-add:hover { background: #ff8a00 !important; color: #fff !important; }
+.entry-pool-item:hover .entry-pool-add,
+.entry-pool-item.selected .entry-pool-add { opacity: 1; }
+
+.entry-check-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.entry-check-col { width: 44px; text-align: center !important; }
+#entriesList tr.selected td { background: #fff7ed !important; }
+
+#tournamentEntriesModal .entry-bulk {
+    display: block;
+    width: calc(100% - 20px);
+    height: 40px !important;
+    min-height: 40px !important;
+    margin: 10px;
+    border: 1px solid #ff8a00 !important;
+    border-radius: 10px !important;
+    background: #ff8a00 !important;
+    color: #fff !important;
+    box-shadow: none !important;
+    font-size: 13.5px !important;
+    font-weight: 750 !important;
+}
+
+#tournamentEntriesModal .entry-bulk[hidden] { display: none !important; }
+
+#tournamentEntriesModal .entry-bulk.danger {
+    border-color: #f2c4bf !important;
+    background: #fff4f2 !important;
+    color: #c2410c !important;
+}
+
+#tournamentEntriesModal .entry-confirm {
+    height: 32px !important;
+    min-height: 32px !important;
+    margin-right: 8px;
+    padding: 0 12px !important;
+    border: 1px dashed #ffb066 !important;
+    border-radius: 8px !important;
+    background: #fff7ed !important;
+    color: #b45f09 !important;
+    box-shadow: none !important;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+}
+
+#entriesList .team-member-actions { white-space: nowrap; text-align: right; }
+
+@media (max-width: 900px) {
+    #tournamentEntriesModal .entry-pool-add { opacity: 1; }
+}

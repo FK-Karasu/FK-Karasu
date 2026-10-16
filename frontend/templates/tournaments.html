@@ -8,7 +8,7 @@
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101720">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101721">
 </head>
 <body>
     {% include '_sidebar.html' %}
@@ -394,7 +394,8 @@
                 <div class="entry-panes">
                     <section class="entry-pane entry-pool">
                         <header>
-                            <strong>Все команды</strong>
+                            <label class="entry-check-all"><input type="checkbox" id="entryPoolCheckAll"
+                                aria-label="Выбрать все команды в списке"><strong>Все команды</strong></label>
                             <span id="entryPoolCount"></span>
                         </header>
                         <label class="entry-search">
@@ -403,13 +404,14 @@
                                 aria-label="Поиск команды">
                         </label>
                         <div class="entry-pool-list" id="entryPoolList" role="list"></div>
-                        <button type="button" class="entry-pool-all" id="entryPoolAll" hidden>Заявить всех из списка</button>
+                        <button type="button" class="entry-bulk" id="entryPoolBulk" hidden></button>
                     </section>
                     <section class="entry-pane entry-chosen">
                         <header>
                             <strong id="entryChosenTitle">Заявлены</strong>
                             <span id="entryChosenCount"></span>
                         </header>
+                        <button type="button" class="entry-bulk danger" id="entryChosenBulk" hidden></button>
                 <div id="entriesList">
                     <div class="tournament-catalog-empty">Загрузка заявок…</div>
                 </div>
@@ -951,7 +953,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}?v=2026080801"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101720"></script>
+    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101721"></script>
     <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101715"></script>
     <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101704"></script>
 </body>

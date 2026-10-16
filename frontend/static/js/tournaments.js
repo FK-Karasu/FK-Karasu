@@ -39,6 +39,8 @@ const catalogState = {
     overview: null,
     formatDirty: false,
     entryTab: 'entries',
+    poolSelected: new Set(),
+    chosenSelected: new Set(),
     roster: null,
     rosterTeamId: null,
     rosterDirty: false,
@@ -1097,11 +1099,13 @@ function renderEntryPool() {
     const shown = free.filter((team) => !query || team.name.toLowerCase().includes(query));
     catalogState.entryPoolShown = shown.map((team) => team.id);
     byId('entryPoolCount').textContent = `${free.length}`;
-    byId('entryPoolAll').hidden = !query || shown.length < 2;
-    byId('entryPoolAll').textContent = `Заявить всех найденных (${shown.length})`;
+    renderEntryBulk();
+    const shownIds = new Set(shown.map((team) => team.id));
+    catalogState.poolSelected = new Set([...catalogState.poolSelected].filter((id) => shownIds.has(id)));
     list.innerHTML = shown.length ? shown.map((team) => `
-        <button type="button" class="entry-pool-item" data-pool-team="${team.id}" role="listitem"
-            title="Заявить в ${escapeHtml(age)}">
+        <div class="entry-pool-item${catalogState.poolSelected.has(team.id) ? ' selected' : ''}" data-pool-row="${team.id}" role="listitem">
+            <input type="checkbox" data-pool-check="${team.id}" ${catalogState.poolSelected.has(team.id) ? 'checked' : ''}
+                aria-label="Выбрать ${escapeHtml(team.name)}">
             <span class="catalog-row-icon">${team.logo_url
                 ? `<img src="${escapeHtml(team.logo_url)}" alt="">` : `<span>${escapeHtml(initials(team.name))}</span>`}</span>
             <span class="entry-pool-name">
@@ -1110,10 +1114,72 @@ function renderEntryPool() {
                     ? `уже в: ${escapeHtml(elsewhere.get(Number(team.id)).join(', '))}`
                     : escapeHtml(pluralizeMembers(Number(team.member_count) || 0))}</small>
             </span>
-            <span class="entry-pool-add" aria-hidden="true">→</span>
-        </button>`).join('') : `<p class="entry-pool-empty">${query
+            <button type="button" class="entry-pool-add" data-pool-team="${team.id}"
+                title="Заявить в ${escapeHtml(age)}" aria-label="Заявить ${escapeHtml(team.name)}">→</button>
+        </div>`).join('') : `<p class="entry-pool-empty">${query
             ? 'Ничего не найдено'
             : catalogState.teams.length ? 'Все команды уже заявлены в эту категорию' : 'В базе пока нет команд — добавьте их во вкладке «Команды»'}</p>`;
+}
+
+function renderEntryBulk() {
+    const poolCount = catalogState.poolSelected.size;
+    const chosenCount = catalogState.chosenSelected.size;
+    const poolBtn = byId('entryPoolBulk');
+    const chosenBtn = byId('entryChosenBulk');
+    if (poolBtn) {
+        poolBtn.hidden = !poolCount;
+        poolBtn.textContent = `Заявить выбранные (${poolCount}) →`;
+    }
+    if (chosenBtn) {
+        chosenBtn.hidden = !chosenCount;
+        chosenBtn.textContent = `← Убрать выбранные (${chosenCount})`;
+    }
+    const poolAll = byId('entryPoolCheckAll');
+    if (poolAll) {
+        const shown = catalogState.entryPoolShown || [];
+        poolAll.checked = shown.length > 0 && shown.every((id) => catalogState.poolSelected.has(id));
+        poolAll.indeterminate = !poolAll.checked && poolCount > 0;
+    }
+    const chosenAll = document.querySelector('[data-chosen-all]');
+    if (chosenAll) {
+        const rows = [...document.querySelectorAll('[data-chosen]')];
+        chosenAll.checked = rows.length > 0 && rows.every((box) => box.checked);
+        chosenAll.indeterminate = !chosenAll.checked && chosenCount > 0;
+    }
+}
+
+async function removeEntries(entryIds) {
+    if (!entryIds.length) return;
+    const names = catalogState.entries.filter((entry) => entryIds.includes(entry.id)).map((entry) => entry.team_name);
+    if (!window.confirm(`Убрать из ${catalogState.age}: ${names.join(', ')}?`)) return;
+    showFormError('entryFormError');
+    const failed = [];
+    for (const id of entryIds) {
+        try {
+            await apiJson(`/api/tournament-entries/${id}`, { method: 'DELETE' });
+        } catch (error) {
+            const entry = catalogState.entries.find((item) => item.id === id);
+            failed.push(`${entry ? entry.team_name : id}: ${error.message}`);
+        }
+    }
+    catalogState.chosenSelected.clear();
+    await loadEntries();
+    await loadCategory();
+    if (failed.length) showFormError('entryFormError', `Не удалось убрать — ${failed.join('; ')}`);
+}
+
+async function confirmEntry(entryId) {
+    try {
+        showFormError('entryFormError');
+        await apiJson(`/api/tournament-entries/${entryId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ status: 'confirmed' }),
+        });
+        await loadEntries();
+        await loadCategory();
+    } catch (error) {
+        showFormError('entryFormError', error.message);
+    }
 }
 
 async function enterTeams(teamIds) {
@@ -1122,8 +1188,10 @@ async function enterTeams(teamIds) {
         showFormError('entryFormError');
         await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/entries`, {
             method: 'POST',
-            body: JSON.stringify({ team_ids: teamIds, age_groups: [catalogState.age] }),
+            // Заявленная команда сразу участвует — отдельного «подтверждения» нет.
+            body: JSON.stringify({ team_ids: teamIds, age_groups: [catalogState.age], status: 'confirmed' }),
         });
+        teamIds.forEach((id) => catalogState.poolSelected.delete(id));
         await loadEntries();
         await loadCategory();
     } catch (error) {
@@ -1145,9 +1213,13 @@ function renderEntries() {
         !catalogState.age || entry.age_group === catalogState.age);
     renderEntryRing();
     byId('entryChosenTitle').textContent = catalogState.age ? `Заявлены в ${catalogState.age}` : 'Заявлены';
+    // Выбор справа живёт только в пределах текущей категории.
+    const ids = new Set(entries.map((entry) => entry.id));
+    catalogState.chosenSelected = new Set([...catalogState.chosenSelected].filter((id) => ids.has(id)));
+    renderEntryBulk();
     const confirmed = entries.filter((entry) => entry.status === 'confirmed').length;
     byId('entryChosenCount').textContent = entries.length
-        ? `${entries.length} · подтвердили ${confirmed}` : '';
+        ? (confirmed === entries.length ? `${entries.length}` : `${entries.length} · без подтверждения ${entries.length - confirmed}`) : '';
 
     if (!entries.length) {
         list.innerHTML = emptyCatalogMarkup(
@@ -1174,15 +1246,19 @@ function renderEntries() {
                 <table class="catalog-data-table">
                     <thead>
                         <tr>
+                            <th class="entry-check-col"><input type="checkbox" data-chosen-all
+                                aria-label="Выбрать все заявленные"></th>
                             <th>Команда</th>
                             <th>Игроки</th>
-                            <th>Статус</th>
                             <th aria-label="Действия"></th>
                         </tr>
                     </thead>
                     <tbody>
                         ${items.map((entry) => `
-                            <tr>
+                            <tr class="${catalogState.chosenSelected.has(entry.id) ? 'selected' : ''}">
+                                <td class="entry-check-col"><input type="checkbox" data-chosen="${entry.id}"
+                                    ${catalogState.chosenSelected.has(entry.id) ? 'checked' : ''}
+                                    aria-label="Выбрать ${escapeHtml(entry.team_name)}"></td>
                                 <td data-label="Команда" title="${escapeHtml([entry.trainer_name, entry.trainer_phone].filter(Boolean).join(' · ') || 'Тренер не указан')}">
                                     <span class="catalog-primary-cell">
                                         <span class="catalog-row-icon">
@@ -1197,17 +1273,10 @@ function renderEntries() {
                                     </span>
                                 </td>
                                 <td data-label="Состав">${rosterCellMarkup(entry)}</td>
-                                <td data-label="Статус">
-                                    <select class="entry-status entry-status-${escapeHtml(entry.status)}"
-                                        data-entry-status="${entry.id}">
-                                        ${ENTRY_STATUS_ORDER.map((code) => `
-                                            <option value="${code}" ${entry.status === code ? 'selected' : ''}>
-                                                ${code === 'confirmed' ? 'Подтвердила'
-                                                    : code === 'invited' ? 'Приглашена' : 'Отказалась'}
-                                            </option>`).join('')}
-                                    </select>
-                                </td>
                                 <td class="team-member-actions">
+                                    ${entry.status === 'confirmed' ? '' : `
+                                        <button type="button" class="entry-confirm" data-confirm-entry="${entry.id}"
+                                            title="Старая заявка без подтверждения — в турнире она не играет">Подтвердить</button>`}
                                     <button class="icon-button danger" type="button"
                                         data-delete-entry="${entry.id}" aria-label="Убрать из турнира">
                                         <i data-lucide="trash-2"></i>
@@ -1306,16 +1375,7 @@ async function updateEntryStatus(entryId, status) {
 }
 
 async function deleteTournamentEntry(entryId) {
-    const entry = catalogState.entries.find((item) => Number(item.id) === Number(entryId));
-    if (!entry || !window.confirm(`Убрать «${entry.team_name}» из турнира?`)) return;
-    try {
-        showFormError('entryFormError');
-        await apiJson(`/api/tournament-entries/${entryId}`, { method: 'DELETE' });
-        await loadEntries();
-        await loadCategory();
-    } catch (error) {
-        showFormError('entryFormError', error.message);
-    }
+    await removeEntries([Number(entryId)]);
 }
 
 /* --- Категория турнира: одна точка правды для всех этапов --- */
@@ -3054,24 +3114,64 @@ function bindEvents() {
     });
     byId('entryPoolSearch').addEventListener('input', renderEntryPool);
     byId('entryPoolList').addEventListener('click', (event) => {
-        const item = event.target.closest('[data-pool-team]');
-        if (!item) return;
-        item.disabled = true;
-        enterTeams([Number(item.dataset.poolTeam)]).catch(showPageError);
-    });
-    byId('entryPoolAll').addEventListener('click', () => {
-        const ids = catalogState.entryPoolShown || [];
-        if (ids.length && window.confirm(`Заявить ${ids.length} команд(ы) в ${catalogState.age}?`)) {
-            byId('entryPoolSearch').value = '';
-            enterTeams(ids).catch(showPageError);
+        const add = event.target.closest('[data-pool-team]');
+        if (add) {
+            add.disabled = true;
+            enterTeams([Number(add.dataset.poolTeam)]).catch(showPageError);
+            return;
         }
+        // Клик по строке (или галочке) — выбрать для группового действия.
+        const row = event.target.closest('[data-pool-row]');
+        if (!row) return;
+        const id = Number(row.dataset.poolRow);
+        if (event.target.matches('[data-pool-check]')) {
+            if (event.target.checked) catalogState.poolSelected.add(id); else catalogState.poolSelected.delete(id);
+        } else if (catalogState.poolSelected.has(id)) {
+            catalogState.poolSelected.delete(id);
+        } else {
+            catalogState.poolSelected.add(id);
+        }
+        renderEntryPool();
     });
-    byId('entriesList').addEventListener('change', (event) => {
-        const select = event.target.closest('[data-entry-status]');
-        if (select) updateEntryStatus(select.dataset.entryStatus, select.value).catch(showPageError);
+    byId('entryPoolCheckAll').addEventListener('change', (event) => {
+        (catalogState.entryPoolShown || []).forEach((id) => {
+            if (event.target.checked) catalogState.poolSelected.add(id); else catalogState.poolSelected.delete(id);
+        });
+        renderEntryPool();
+    });
+    byId('entryPoolBulk').addEventListener('click', () => {
+        enterTeams([...catalogState.poolSelected]).catch(showPageError);
+    });
+    byId('entryChosenBulk').addEventListener('click', () => {
+        removeEntries([...catalogState.chosenSelected]).catch(showPageError);
     });
     bindRosterModal();
+    byId('entriesList').addEventListener('change', (event) => {
+        const box = event.target.closest('[data-chosen]');
+        if (box) {
+            const id = Number(box.dataset.chosen);
+            if (box.checked) catalogState.chosenSelected.add(id); else catalogState.chosenSelected.delete(id);
+            box.closest('tr').classList.toggle('selected', box.checked);
+            renderEntryBulk();
+            return;
+        }
+        if (event.target.closest('[data-chosen-all]')) {
+            const on = event.target.checked;
+            document.querySelectorAll('[data-chosen]').forEach((item) => {
+                item.checked = on;
+                item.closest('tr').classList.toggle('selected', on);
+                const id = Number(item.dataset.chosen);
+                if (on) catalogState.chosenSelected.add(id); else catalogState.chosenSelected.delete(id);
+            });
+            renderEntryBulk();
+        }
+    });
     byId('entriesList').addEventListener('click', (event) => {
+        const confirmButton = event.target.closest('[data-confirm-entry]');
+        if (confirmButton) {
+            confirmEntry(confirmButton.dataset.confirmEntry).catch(showPageError);
+            return;
+        }
         const roster = event.target.closest('[data-roster-team]');
         if (roster) {
             openRoster(roster.dataset.rosterTeam).catch(showPageError);
