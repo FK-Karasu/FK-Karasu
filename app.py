@@ -7599,6 +7599,73 @@ def serialize_protocol(match):
     }
 
 
+@app.route('/api/tournament-matches/<int:match_id>/sides', methods=['PUT'])
+@login_required
+def tournament_match_sides_api(match_id):
+    """Организатор сам выбирает, кто с кем играет в матче за места.
+
+    Только первый этап матчей за места и только пока он не сыгран. Если команда
+    уже стоит в другом матче за места, команды меняются местами — каждая играет
+    один раз. Выбор закрепляется (seed «e:»), автоподстановка его не перетирает.
+    """
+    ensure_tournament_tables()
+    if not has_tournament_permission('edit'):
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    match = db.session.get(TournamentMatch, match_id)
+    if not match:
+        return jsonify({'success': False, 'message': 'Матч не найден'}), 404
+    if match.stage != TournamentMatch.STAGE_PLACEMENT or match.round_no != 1:
+        return jsonify({'success': False, 'message': 'Пары выбираются только в первых матчах за места'}), 400
+    if match.is_played:
+        return jsonify({'success': False, 'message': 'Матч уже сыгран — сначала очистите счёт'}), 409
+
+    data = request.get_json() or {}
+    entries = {e.id: e for e in confirmed_entries(match.tournament_id, match.age_group)}
+    chosen = {}
+    for side in ('home', 'away'):
+        try:
+            value = int(data.get(f'{side}_entry_id')) if data.get(f'{side}_entry_id') else None
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Некорректная команда'}), 400
+        if value is not None and value not in entries:
+            return jsonify({'success': False, 'message': 'Команда не подтверждена в этой категории'}), 400
+        chosen[side] = value
+    if chosen['home'] and chosen['home'] == chosen['away']:
+        return jsonify({'success': False, 'message': 'Команда не может играть сама с собой'}), 400
+
+    siblings = [m for m in category_matches(match.tournament_id, match.age_group, TournamentMatch.STAGE_PLACEMENT)
+                if m.round_no == 1 and m.id != match.id]
+    try:
+        for side in ('home', 'away'):
+            entry_id = chosen[side]
+            previous = getattr(match, f'{side}_entry_id')
+            previous_seed = getattr(match, f'{side}_seed')
+            previous_label = getattr(match, f'{side}_label')
+            if entry_id == previous:
+                continue
+            # Команда уже стоит в другом матче за места — меняем их местами.
+            for other in siblings:
+                for other_side in ('home', 'away'):
+                    if getattr(other, f'{other_side}_entry_id') == entry_id and entry_id:
+                        if other.is_played:
+                            raise TournamentConflict(
+                                f'{entries[entry_id].team.name} уже сыграл «{other.label}» — его не переставить')
+                        set_match_side(other, other_side, previous)
+                        setattr(other, f'{other_side}_seed', f'e:{previous}' if previous else previous_seed)
+                        setattr(other, f'{other_side}_label',
+                                entries[previous].team.name if previous and entries.get(previous) else previous_label)
+            set_match_side(match, side, entry_id)
+            setattr(match, f'{side}_seed', f'e:{entry_id}' if entry_id else None)
+            setattr(match, f'{side}_label', entries[entry_id].team.name if entry_id else 'Команда не выбрана')
+        for item in [match] + siblings:
+            propagate_playoff(item)
+    except TournamentConflict as error:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(error)}), 409
+    db.session.commit()
+    return jsonify({'success': True, 'match': serialize_match(match)})
+
+
 @app.route('/api/tournament-matches/<int:match_id>/protocol', methods=['GET', 'PUT'])
 @login_required
 def tournament_match_protocol_api(match_id):

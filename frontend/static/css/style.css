@@ -17269,3 +17269,39 @@ table.stat-table tr.stat-muted td { opacity: .5; }
 
 .final-logo img { width: 100%; height: 100%; object-fit: contain; }
 .final-medal { font-size: 20px; }
+
+.sp-pair {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #f1efed;
+}
+
+.sp-pair-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
+}
+
+.sp-pair-row em { color: #969ca6; font-style: normal; }
+
+#scorePopover .sp-pair select {
+    width: 100% !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 8px !important;
+    border: 1px solid #e4e0dc !important;
+    border-radius: 8px !important;
+    background: #fff !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+}
+
+.sp-pair-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}

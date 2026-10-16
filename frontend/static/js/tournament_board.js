@@ -258,6 +258,11 @@
 
     /* --- Сетка плей-офф --- */
 
+    // Первые матчи за места: организатор сам выбирает, кто с кем играет.
+    function isPairable(match) {
+        return match.stage === 'placement' && match.round_no === 1 && !match.is_played;
+    }
+
     function bracketMatchMarkup(match, number) {
         if (match.is_bye) {
             const team = match.home.is_bye ? match.away : match.home;
@@ -279,8 +284,8 @@
                 </div>`;
         };
         return `
-            <button type="button" class="bk-match${match.is_played ? ' played' : ''}${ready ? ' ready' : ''}"
-                data-board-match="${match.id}" ${ready ? '' : 'disabled'}>
+            <button type="button" class="bk-match${match.is_played ? ' played' : ''}${ready || isPairable(match) ? ' ready' : ''}"
+                data-board-match="${match.id}" ${ready || isPairable(match) ? '' : 'disabled'}>
                 <span class="bk-no">${number}${match.kickoff_at ? ` · ${escapeHtml(formatKickoff(match.kickoff_at))}` : ''}</span>
                 ${row('home', match.home_score, match.home_penalty)}
                 ${row('away', match.away_score, match.away_penalty)}
@@ -364,13 +369,16 @@
 
     function openPopover(matchId, anchor) {
         const match = findMatch(matchId);
-        if (!match || match.is_bye || !match.home.entry_id || !match.away.entry_id) return;
+        if (!match || match.is_bye) return;
+        const ready = Boolean(match.home.entry_id && match.away.entry_id);
+        if (!ready && !isPairable(match)) return;
         board.popoverMatch = match;
         const pop = byId('scorePopover');
         const playoff = match.stage === 'playoff';
         const value = (number) => (number === null || number === undefined ? '' : number);
         pop.innerHTML = `
             <p class="sp-title">${escapeHtml(match.label || (match.group_name ? `Группа ${match.group_name} · тур ${match.round_no}` : 'Матч'))}</p>
+            ${isPairable(match) ? pairPickerMarkup(match) : ''}
             <div class="sp-row">
                 <span class="sp-team">${escapeHtml(match.home.team_name)}</span>
                 <input type="number" min="0" max="99" inputmode="numeric" data-sp="home" value="${value(match.home_score)}" aria-label="Голы ${escapeHtml(match.home.team_name)}">
@@ -410,6 +418,53 @@
         pop.querySelector('[data-sp="home"]').select();
         board.popoverOpenedAt = Date.now();
         loadGoalProtocol(match.id);
+    }
+
+    function pairPickerMarkup(match) {
+        const data = categoryOverview();
+        // В матчи за места — те, кто не играет в плей-офф.
+        const inPlayoff = new Set((data.playoff || []).flatMap((m) => [m.home.entry_id, m.away.entry_id]).filter(Boolean));
+        const teams = (data.entries || []).filter((entry) => !inPlayoff.has(entry.id))
+            .sort((a, b) => a.team_name.localeCompare(b.team_name, 'ru'));
+        const select = (side) => `
+            <select data-pair="${side}" aria-label="${side === 'home' ? 'Первая команда' : 'Вторая команда'}">
+                <option value="">— выберите —</option>
+                ${teams.map((entry) => `<option value="${entry.id}" ${match[side].entry_id === entry.id ? 'selected' : ''}>
+                    ${escapeHtml(entry.team_name)}</option>`).join('')}
+            </select>`;
+        return `
+            <div class="sp-pair">
+                <p class="sp-goals-title">Кто играет <small>можно выбрать самим</small></p>
+                <div class="sp-pair-row">${select('home')}<em>—</em>${select('away')}</div>
+                <div class="sp-pair-actions">
+                    <button type="button" class="sp-link" data-sp-action="auto-pairs">Вернуть автоматические пары</button>
+                    <button type="button" class="sp-save" data-sp-action="pair">Сохранить пару</button>
+                </div>
+            </div>`;
+    }
+
+    async function savePair() {
+        const match = board.popoverMatch;
+        const pop = byId('scorePopover');
+        const error = pop.querySelector('.sp-error');
+        const value = (side) => pop.querySelector(`[data-pair="${side}"]`).value || null;
+        try {
+            await apiJson(`/api/tournament-matches/${match.id}/sides`, {
+                method: 'PUT',
+                body: JSON.stringify({ home_entry_id: value('home'), away_entry_id: value('away') }),
+            });
+            closePopover();
+            await loadCategory();
+        } catch (requestError) {
+            error.hidden = false;
+            error.textContent = requestError.message;
+        }
+    }
+
+    async function resetPairs() {
+        if (!window.confirm('Вернуть пары, которые расставила система? Ваш выбор пропадёт.')) return;
+        closePopover();
+        await togglePlacement(true);
     }
 
     function placePopover() {
@@ -775,6 +830,8 @@
         pop.addEventListener('click', (event) => {
             const action = event.target.closest('[data-sp-action]')?.dataset.spAction;
             if (action === 'save') savePopover();
+            if (action === 'pair') savePair();
+            if (action === 'auto-pairs') resetPairs();
             if (action === 'clear') savePopover(true);
             if (action === 'protocol') {
                 const id = board.popoverMatch?.id;
