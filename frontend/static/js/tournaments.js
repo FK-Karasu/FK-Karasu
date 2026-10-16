@@ -1039,37 +1039,14 @@ function ensureStadiumMap(latitude = 41.3111, longitude = 69.2797, hasSelection 
 const ENTRY_STATUS_ORDER = ['confirmed', 'invited', 'declined'];
 
 function renderEntryTournamentCard(tournament) {
-    const card = byId('entryTournamentCard');
-    const poster = tournament.poster_url
-        ? `<div class="entry-tournament-poster" style="background-image:url('${escapeHtml(tournament.poster_url)}')"></div>`
-        : '<div class="entry-tournament-poster empty"><i data-lucide="image"></i></div>';
-    const rows = [
-        ['calendar-days', tournamentDates(tournament)],
-        ['clock', tournament.start_time || '—'],
-        ['map-pin', tournament.location || 'Локация не указана'],
-    ];
-    card.innerHTML = `
-        ${poster}
-        <div class="entry-tournament-info">
-            <div class="entry-tournament-facts">
-                ${rows.map(([icon, text]) => `
-                    <div><i data-lucide="${icon}"></i><span>${escapeHtml(text)}</span></div>
-                `).join('')}
-            </div>
-            <div class="entry-tournament-ages">
-                ${(tournament.age_groups || []).map((age) =>
-                    `<span class="age-group-chip static">${escapeHtml(age)}</span>`).join('')}
-            </div>
-            <div class="entry-tournament-state ${tournament.is_published === false ? 'hidden-state' : ''}">
-                <i data-lucide="${tournament.is_published === false ? 'eye-off' : 'globe'}"></i>
-                <span>${tournament.is_published === false
-                    ? 'Скрыт с сайта — черновик'
-                    : 'Опубликован в афише на сайте'}</span>
-            </div>
-        </div>
-        <div class="entry-ring" id="entryRing"></div>`;
-    refreshIcons();
-    renderEntryRing();
+    // Одна строка под названием: всё остальное о турнире есть в списке турниров.
+    const parts = [
+        tournamentDates(tournament),
+        tournament.start_time,
+        tournament.location,
+        tournament.is_published === false ? 'черновик, на сайте не виден' : 'на сайте',
+    ].filter(Boolean);
+    byId('entriesTournamentMeta').textContent = parts.join(' · ');
 }
 
 function renderEntryRing() {
@@ -1209,6 +1186,7 @@ function renderEntryPickers() {
     let picked = (catalogState.entryAges || []).filter((age) => groups.includes(age));
     if (!picked.length) picked = groups.includes(catalogState.age) ? [catalogState.age] : groups.slice(0, 1);
     catalogState.entryAges = picked;
+    byId('entryAgeField').hidden = groups.length < 2;
     byId('entryAgeChips').innerHTML = groups.map((age) => `
         <label class="age-pick${picked.includes(age) ? ' on' : ''}">
             <input type="checkbox" value="${escapeHtml(age)}" ${picked.includes(age) ? 'checked' : ''}>
@@ -1249,18 +1227,14 @@ function renderEntries() {
             byAge.get(entry.age_group).push(entry);
         });
 
-    list.innerHTML = [...byAge.entries()].map(([age, items]) => `
+    list.innerHTML = [...byAge.entries()].map(([, items]) => `
         <section class="entry-group">
-            <h3 class="entry-group-title">${escapeHtml(age)}
-                <span>${escapeHtml(pluralizeTeams(items.length))}</span>
-            </h3>
             <div class="catalog-table-wrap">
                 <table class="catalog-data-table">
                     <thead>
                         <tr>
                             <th>Команда</th>
-                            <th>Тренер</th>
-                            <th>Состав</th>
+                            <th>Игроки</th>
                             <th>Статус</th>
                             <th aria-label="Действия"></th>
                         </tr>
@@ -1268,7 +1242,7 @@ function renderEntries() {
                     <tbody>
                         ${items.map((entry) => `
                             <tr>
-                                <td data-label="Команда">
+                                <td data-label="Команда" title="${escapeHtml([entry.trainer_name, entry.trainer_phone].filter(Boolean).join(' · ') || 'Тренер не указан')}">
                                     <span class="catalog-primary-cell">
                                         <span class="catalog-row-icon">
                                             ${entry.team_logo_url
@@ -1277,14 +1251,8 @@ function renderEntries() {
                                         </span>
                                         <span class="entry-team-name">
                                             <strong>${escapeHtml(entry.team_name)}</strong>
-                                            ${otherCategories(entry) ? `<small>также играет в: ${escapeHtml(otherCategories(entry))}</small>` : ''}
+                                            ${otherCategories(entry) ? `<small>ещё: ${escapeHtml(otherCategories(entry))}</small>` : ''}
                                         </span>
-                                    </span>
-                                </td>
-                                <td data-label="Тренер">
-                                    <span class="team-table-contacts">
-                                        <span>${escapeHtml(entry.trainer_name || '—')}</span>
-                                        ${entry.trainer_phone ? `<small>${escapeHtml(entry.trainer_phone)}</small>` : ''}
                                     </span>
                                 </td>
                                 <td data-label="Состав">${rosterCellMarkup(entry)}</td>
@@ -1396,8 +1364,9 @@ async function addTournamentEntry() {
         renderTeamChips();
         const notice = byId('entryNotice');
         notice.hidden = !(result.added || []).length;
-        notice.textContent = `Заявлено: ${(result.added || []).join(', ')}. `
-            + 'Отметьте статус «Подтвердила» и проверьте состав каждой заявки.';
+        notice.textContent = `Заявлено: ${(result.added || []).join(', ')}`;
+        window.clearTimeout(catalogState.entryNoticeTimer);
+        catalogState.entryNoticeTimer = window.setTimeout(() => { notice.hidden = true; }, 5000);
         if (result.skipped && result.skipped.length) {
             showFormError('entryFormError',
                 `Уже были заявлены: ${result.skipped.join(', ')}`);
@@ -1533,36 +1502,21 @@ function renderSteps() {
         button.hidden = (tab === 'playoff' && format === 'league')
             || (tab === 'matches' && format === 'knockout');
     });
-    byId('matchesTabTitle').textContent = format === 'league' ? 'Таблица и матчи' : 'Группы и матчи';
+    byId('matchesTabTitle').textContent = format === 'league' ? 'Таблица' : 'Группы и матчи';
 
-    const hint = byId('nextStepHint');
-    let text = '';
-    let target = '';
-    if (!data) {
-        text = '';
-    } else if (!steps.entries) {
-        text = 'Шаг 1. Заявите команды и отметьте, кто подтвердил участие (нужно минимум 2).';
-        target = 'entries';
-    } else if (!steps.format) {
-        text = 'Шаг 2. Выберите схему турнира и нажмите «Жеребьёвка и календарь».';
-        target = 'scheme';
-    } else if (!steps.groups) {
-        text = `Шаг 3. Вносите счёт матчей: ${data.counts.group_played} из ${data.counts.group_matches} сыграно.`;
-        target = 'matches';
-    } else if (!steps.playoff) {
-        text = `Шаг 4. Плей-офф: ${data.counts.playoff_played} из ${data.counts.playoff_matches} матчей сыграно.`;
-        target = 'playoff';
-    } else {
-        const champion = (data.results || []).find((row) => row.place === 1);
-        text = champion ? `Турнир завершён. Победитель — ${champion.team_name}.` : 'Турнир завершён.';
-        target = 'players';
+    // Следующий шаг — оранжевая точка на вкладке вместо отдельной плашки.
+    let next = '';
+    if (data) {
+        if (!steps.entries) next = 'entries';
+        else if (!steps.format) next = 'scheme';
+        else if (!steps.groups) next = 'matches';
+        else if (!steps.playoff) next = 'playoff';
+        else if (!steps.finished) next = '';
+        else next = 'players';
     }
-    hint.hidden = !text;
-    hint.innerHTML = text ? `<i data-lucide="${target === 'players' ? 'trophy' : 'arrow-right-circle'}"></i>
-        <span>${escapeHtml(text)}</span>
-        ${target && target !== catalogState.entryTab
-            ? `<button type="button" class="btn-secondary" data-goto-tab="${target}">Перейти</button>` : ''}` : '';
-    refreshIcons();
+    document.querySelectorAll('[data-entry-tab]').forEach((button) => {
+        button.classList.toggle('next', button.dataset.entryTab === next && !button.classList.contains('done'));
+    });
 }
 
 /* Схема: формат, параметры и живое описание */
@@ -1677,6 +1631,7 @@ function renderScheme() {
         legs: settings.format !== 'knockout',
         tiebreak: settings.format !== 'knockout',
         third_place: settings.format !== 'league',
+        more: settings.format !== 'knockout',
     };
     document.querySelectorAll('#formatOptions [data-option]').forEach((field) => {
         field.hidden = !show[field.dataset.option];
@@ -2301,21 +2256,15 @@ function renderPlayoff() {
 
 /* --- Состав по категориям: кто из игроков клуба где играет --- */
 
-const ROSTER_ISSUES = {
-    no_birth_date: 'Нет даты рождения',
-    too_old: 'Старше всех категорий',
-    too_young: 'Младше всех категорий',
-};
-
 function rosterCellMarkup(entry) {
     const waiting = Number(entry.team_unassigned) || 0;
     const count = entry.roster_used ? entry.roster_count : entry.member_count;
     return `
         <button type="button" class="roster-chip${waiting ? ' warn' : ''}" data-roster-team="${entry.team_id}"
             title="Кто из игроков клуба играет в этой категории">
-            <i data-lucide="users-round"></i>
-            <span>${escapeHtml(pluralizeMembers(count))}</span>
-            ${waiting ? `<em>${waiting} ждут распределения</em>` : ''}
+            <span>${count}</span>
+            ${waiting ? `<em title="${waiting} игрок(а) ждут, в какую категорию их поставить">+${waiting} ?</em>` : ''}
+            <i data-lucide="chevron-right"></i>
         </button>`;
 }
 
@@ -2339,15 +2288,16 @@ function rosterPlayerMarkup(player, categories) {
         player.number ? `№${player.number}` : null,
         player.position ? POSITION_SHORT[player.position] || player.position : null,
     ].filter(Boolean).join(' · ');
-    const options = [`<option value="">Не распределён</option>`].concat(categories.map((category) => {
-        const ok = player.eligible.includes(category.entry_id);
-        return `<option value="${category.entry_id}" ${player.entry_id === category.entry_id ? 'selected' : ''}
-            ${ok || player.entry_id === category.entry_id ? '' : 'disabled'}>${escapeHtml(category.age_group)}${ok ? '' : ' — не по возрасту'}</option>`;
-    }));
+    // Список — это действие: «выбрать категорию» или «перенести», а не повтор названия колонки.
+    const targets = categories.filter((category) => category.entry_id !== player.entry_id
+        && player.eligible.includes(category.entry_id));
+    const options = [`<option value="__keep" selected>${player.entry_id ? 'Перенести…' : 'Выбрать категорию…'}</option>`]
+        .concat(targets.map((category) =>
+            `<option value="${category.entry_id}">${escapeHtml(category.age_group)}</option>`))
+        .concat(player.entry_id ? ['<option value="">Убрать из категории</option>'] : []);
     const flag = player.violates
         ? '<span class="roster-flag bad">не по возрасту</span>'
-        : player.issue ? `<span class="roster-flag">${escapeHtml(ROSTER_ISSUES[player.issue])}</span>`
-            : player.is_auto ? '<span class="roster-flag auto" title="Поставлен автоматически по году рождения">авто</span>' : '';
+        : player.is_auto ? '<span class="roster-flag auto" title="Поставлен автоматически по году рождения">авто</span>' : '';
     return `
         <div class="roster-player${player.violates ? ' violates' : ''}${player.issue ? ' muted' : ''}"
             data-member="${player.id}" data-eligible="${player.eligible.join(',')}">
@@ -2383,15 +2333,15 @@ function renderRoster() {
     const summary = byId('rosterSummary');
     if (!data.players.length) {
         summary.className = 'roster-summary warn';
-        summary.textContent = 'В клубе пока нет игроков. Добавьте их кнопкой «Игроки клуба».';
+        summary.textContent = 'В клубе пока нет игроков.';
     } else if (waiting.length) {
         summary.className = 'roster-summary warn';
-        summary.textContent = `${pluralizeMembers(waiting.length)} ждут решения: перетащите каждого `
-            + 'в нужную категорию или выберите её в списке на карточке.';
+        summary.textContent = `Выберите категорию для ${waiting.length} — перетащите карточку или выберите в списке.`;
     } else {
-        summary.className = 'roster-summary ok';
-        summary.textContent = 'Все подходящие игроки распределены.';
+        summary.className = 'roster-summary';
+        summary.textContent = '';
     }
+    summary.hidden = !summary.textContent;
 
     const column = (title, sub, zone, players, extra = '') => `
         <section class="roster-column${zone === '' ? ' free' : ''}">
@@ -2468,7 +2418,7 @@ function bindRosterModal() {
     });
     board.addEventListener('change', (event) => {
         const select = event.target.closest('[data-move]');
-        if (select) moveRosterPlayer(select.dataset.move, select.value);
+        if (select && select.value !== '__keep') moveRosterPlayer(select.dataset.move, select.value);
     });
     byId('rosterPlayUp').addEventListener('change', (event) => setPlayUp(event.target.checked));
     byId('rosterOpenTeam').addEventListener('click', () => {
@@ -3458,13 +3408,6 @@ function bindEvents() {
             renderSteps();
             if (button.dataset.entryTab === 'players') loadPlayers();
         });
-    });
-    byId('nextStepHint').addEventListener('click', (event) => {
-        const button = event.target.closest('[data-goto-tab]');
-        if (!button) return;
-        switchEntryTab(button.dataset.gotoTab);
-        renderSteps();
-        if (button.dataset.gotoTab === 'players') loadPlayers();
     });
     byId('categorySwitch').addEventListener('click', (event) => {
         const button = event.target.closest('[data-category]');

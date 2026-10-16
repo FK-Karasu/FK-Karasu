@@ -8,7 +8,7 @@
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101607">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101608">
 </head>
 <body>
     {% include '_sidebar.html' %}
@@ -323,19 +323,20 @@
     <div class="modal tournament-catalog-modal" id="tournamentEntriesModal" hidden>
         <div class="modal-content tournament-entries-content">
             <header class="tournament-catalog-modal-header">
-                <div>
-                    <span class="tournament-catalog-eyebrow">Управление турниром</span>
+                <div class="ws-head">
                     <h2 id="entriesTournamentTitle">Турнир</h2>
+                    <p class="ws-meta" id="entriesTournamentMeta"></p>
                 </div>
+                <button type="button" class="ws-studio" id="openStudioBtn" title="Картинка для соцсетей">
+                    <i data-lucide="image-plus"></i><span>Публикация</span>
+                </button>
                 <button class="icon-button" type="button" data-close-modal="tournamentEntriesModal" aria-label="Закрыть">
                     <i data-lucide="x"></i>
                 </button>
             </header>
             <div class="team-details-body">
-                <section class="entry-tournament-card" id="entryTournamentCard"></section>
-
                 <div class="category-switch-row">
-                    <span class="category-switch-label">Возрастная категория</span>
+                    <span class="category-switch-label">Категория</span>
                     <div class="category-switch" id="categorySwitch" role="tablist"></div>
                 </div>
 
@@ -350,14 +351,9 @@
                     <button type="button" data-entry-tab="playoff">
                         <span class="step-no">4</span><span class="step-title">Плей-офф</span></button>
                     <button type="button" data-entry-tab="players">
-                        <span class="step-no">5</span><span class="step-title">Игроки и награды</span></button>
+                        <span class="step-no">5</span><span class="step-title">Награды</span></button>
                 </nav>
-                <button type="button" class="entry-tab-action" id="openStudioBtn">
-                    <i data-lucide="image-plus"></i> Публикация
-                </button>
                 </div>
-
-                <div class="tournament-next-step" id="nextStepHint" hidden></div>
 
                 <div data-entry-panel="entries">
                 <div class="entry-add-row">
@@ -370,8 +366,8 @@
                         </div>
                         <div class="team-picker-list" id="entryTeamList" role="listbox" hidden></div>
                     </div>
-                    <div class="tournament-catalog-field entry-age-field">
-                        <span>В какие категории</span>
+                    <div class="tournament-catalog-field entry-age-field" id="entryAgeField">
+                        <span>Категории</span>
                         <div class="entry-age-chips" id="entryAgeChips" role="group"
                             aria-label="Категории для заявки"></div>
                     </div>
@@ -382,9 +378,7 @@
                 </div>
                 <div class="tournament-catalog-form-error" id="entryFormError" hidden></div>
                 <p class="scheme-success entry-notice" id="entryNotice" hidden></p>
-                <p class="group-hint">Один клуб можно заявить сразу в несколько категорий — отметьте их галочками.
-                    Играют только команды со статусом «Подтвердила». Кнопка в колонке «Состав» — кто из игроков
-                    клуба играет в этой категории.</p>
+                
 
                 <div id="entriesList">
                     <div class="tournament-catalog-empty">Загрузка заявок…</div>
@@ -393,7 +387,6 @@
 
                 <div data-entry-panel="scheme" hidden>
                     <section class="scheme-section">
-                        <h3 class="scheme-title">Как будет проходить турнир</h3>
                         <div class="format-cards" id="formatCards" role="radiogroup" aria-label="Формат турнира">
                             <label class="format-card">
                                 <input type="radio" name="tournamentFormat" value="groups_playoff">
@@ -432,6 +425,13 @@
                                 <option value="4">4 команды</option>
                             </select>
                         </label>
+                        <label class="roster-switch scheme-third" data-option="third_place">
+                            <input id="formatThird" type="checkbox" checked>
+                            <span>Матч за 3 место</span>
+                        </label>
+                        <details class="scheme-more" data-option="more">
+                            <summary>Дополнительно: круги и равенство очков</summary>
+                            <div class="scheme-more-body">
                         <label class="tournament-catalog-field" data-option="legs">
                             <span>Кругов</span>
                             <select id="formatLegs">
@@ -446,13 +446,8 @@
                                 <option value="overall">Сначала разница мячей</option>
                             </select>
                         </label>
-                        <label class="tournament-publish-toggle" data-option="third_place">
-                            <input id="formatThird" type="checkbox" checked>
-                            <span>
-                                <strong>Матч за 3 место</strong>
-                                <small>Проигравшие полуфиналов разыгрывают бронзу.</small>
-                            </span>
-                        </label>
+                            </div>
+                        </details>
                     </section>
 
                     <section class="scheme-plan" id="schemePlan" aria-live="polite"></section>
@@ -474,9 +469,7 @@
                     </div>
 
                     <section class="scheme-section" id="groupBoardSection" hidden>
-                        <h3 class="scheme-title">Составы групп</h3>
-                        <p class="group-hint">Перетащите команду в другую группу — календарь пересоберётся сам.
-                            После первого сыгранного матча группы закрепляются.</p>
+                        <h3 class="scheme-title">Составы групп <small>перетащите команду, чтобы поменять группу</small></h3>
                         <div class="tournament-catalog-form-error" id="groupFormError" hidden></div>
                         <div class="group-board" id="groupBoard"></div>
                     </section>
@@ -498,15 +491,12 @@
                     <div class="matches-toolbar">
                         <div class="stage-progress" id="playoffProgress"></div>
                     </div>
-                    <p class="group-hint">Команды попадают в сетку сами, как только их группа доиграна.
-                        Победитель матча автоматически переходит дальше. При ничьей впишите серию пенальти.</p>
+                    <p class="group-hint">Сетка заполняется сама. При ничьей впишите пенальти.</p>
                     <div class="tournament-catalog-form-error" id="playoffError" hidden></div>
                     <div id="playoffBoard"></div>
                 </div>
 
                 <div data-entry-panel="players" hidden>
-                    <p class="group-hint">Таблицы считаются из протоколов матчей.
-                        Расчётные призы система предлагает сама, остальные выбирает организатор.</p>
                     <p class="group-hint">
                         <a id="screenLink" href="#" target="_blank" rel="noopener">
                             Открыть табло для экрана на стадионе</a>
@@ -523,30 +513,24 @@
         <div class="modal-content roster-modal-content">
             <header class="tournament-catalog-modal-header">
                 <div>
-                    <span class="tournament-catalog-eyebrow">Состав по категориям</span>
                     <h2 id="rosterTitle">Команда</h2>
+                    <p class="ws-meta">Кто из игроков клуба в какой категории играет</p>
                 </div>
                 <button class="icon-button" type="button" data-close-modal="rosterModal" aria-label="Закрыть">
                     <i data-lucide="x"></i>
                 </button>
             </header>
             <div class="team-details-body">
-                <p class="roster-intro">Игроки клуба один раз заводятся в карточке команды, а здесь раскладываются
-                    по категориям турнира. Кому по году рождения подходит одна категория — система ставит сама
-                    (метка «авто»). Если подходят две, например A и B одного возраста, выберите вы.</p>
                 <div class="roster-summary" id="rosterSummary"></div>
                 <div class="roster-toolbar">
-                    <label class="tournament-publish-toggle" id="rosterPlayUpField">
+                    <label class="roster-switch" id="rosterPlayUpField"
+                        title="Например, игрок 2012 г.р. сможет выйти за 2010-2011. Старшим за младших нельзя.">
                         <input id="rosterPlayUp" type="checkbox">
-                        <span>
-                            <strong>Младшие могут играть за старших</strong>
-                            <small>Игрок 2012 г.р. сможет выйти в категории 2010-2011. Наоборот нельзя никогда.
-                                Правило действует на весь турнир.</small>
-                        </span>
+                        <span>Младшие могут играть за старших</span>
                     </label>
-                    <button class="btn-secondary" type="button" id="rosterOpenTeam">
+                    <button class="roster-link" type="button" id="rosterOpenTeam">
                         <i data-lucide="user-round-plus"></i>
-                        Игроки клуба
+                        Добавить игроков в клуб
                     </button>
                 </div>
                 <div class="tournament-catalog-form-error" id="rosterError" hidden></div>
@@ -1044,7 +1028,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}?v=2026080801"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101603"></script>
-    <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101604"></script>
+    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101605"></script>
+    <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101605"></script>
 </body>
 </html>

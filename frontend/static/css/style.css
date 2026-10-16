@@ -15988,3 +15988,240 @@ table.stat-table tr.stat-muted td { opacity: .5; }
 .entry-notice {
     margin: 0 0 10px;
 }
+
+/* --- Упрощённое окно турнира: меньше рамок и текста --- */
+
+#tournamentEntriesModal .tournament-catalog-modal-header,
+#rosterModal .tournament-catalog-modal-header {
+    align-items: center;
+    gap: 10px;
+}
+
+.ws-head {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    margin-right: auto;
+}
+
+.ws-head h2,
+#rosterModal .tournament-catalog-modal-header h2 {
+    margin: 0;
+}
+
+.ws-meta {
+    margin: 0;
+    color: #969ca6;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+#tournamentEntriesModal .ws-studio {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 7px;
+    height: 38px !important;
+    min-height: 38px !important;
+    padding: 0 14px !important;
+    border: 1px solid #ecebe9 !important;
+    border-radius: 10px !important;
+    background: #fff !important;
+    color: #3d4350 !important;
+    font-size: 13px !important;
+    font-weight: 650 !important;
+}
+
+#tournamentEntriesModal .ws-studio svg { width: 16px; height: 16px; color: #ee7800; }
+
+#tournamentEntriesModal .tournament-catalog-modal-header .tour-help { margin-left: 0; }
+
+.category-switch-row {
+    margin-bottom: 10px;
+}
+
+.category-switch-label {
+    color: #969ca6;
+    font-weight: 600;
+}
+
+#tournamentEntriesModal .category-switch button {
+    min-height: 32px !important;
+    padding: 0 12px !important;
+    font-weight: 650 !important;
+}
+
+/* Вкладки — подчёркиванием, без «таблеток» и рамок. */
+#tournamentEntriesModal .entry-tabs-row {
+    margin-bottom: 18px;
+    border-bottom: 1px solid #ecebe9;
+}
+
+#tournamentEntriesModal .entry-tabs.entry-steps {
+    display: flex;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    overflow-x: auto;
+}
+
+#tournamentEntriesModal .entry-steps button {
+    position: relative;
+    min-height: 42px !important;
+    padding: 0 12px !important;
+    border: 0 !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #5f6673 !important;
+    white-space: nowrap;
+}
+
+#tournamentEntriesModal .entry-steps button.active {
+    border-bottom-color: #ee7800 !important;
+    color: #17191f !important;
+}
+
+.entry-steps .step-no {
+    width: 18px;
+    height: 18px;
+    font-size: 10.5px;
+}
+
+.entry-steps button.next .step-title::after {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-left: 6px;
+    border-radius: 50%;
+    background: #ee7800;
+    vertical-align: middle;
+}
+
+.scheme-title small {
+    margin-left: 8px;
+    color: #969ca6;
+    font-size: 12.5px;
+    font-weight: 500;
+}
+
+.scheme-options {
+    grid-template-columns: repeat(2, minmax(0, 220px)) auto;
+}
+
+.scheme-options .scheme-third {
+    align-self: end;
+    height: 42px;
+}
+
+.scheme-more {
+    grid-column: 1 / -1;
+}
+
+.scheme-more summary {
+    width: max-content;
+    color: #b45f09;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.scheme-more-body {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 260px));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.scheme-plan {
+    border-style: solid;
+    border-color: #ecebe9;
+    background: #fbfaf9;
+}
+
+/* Простой переключатель-галочка вместо большой карточки с описанием. */
+.roster-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #3d4350;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.roster-switch input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: #ee7800;
+}
+
+#rosterModal .roster-link {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    height: auto !important;
+    min-height: 0 !important;
+    margin-left: auto;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #b45f09 !important;
+    font-size: 13px !important;
+    font-weight: 650 !important;
+}
+
+#rosterModal .roster-link svg { width: 16px; height: 16px; }
+
+.roster-toolbar {
+    justify-content: space-between;
+}
+
+.roster-summary[hidden] { display: none; }
+
+#rosterModal .roster-move {
+    height: 28px !important;
+    min-height: 28px !important;
+    border: 0 !important;
+    background: #f6f4f2 !important;
+    color: #5f6673 !important;
+    font-size: 12px !important;
+}
+
+.roster-player {
+    border-color: #efedea;
+}
+
+#tournamentEntriesModal .roster-chip {
+    gap: 4px;
+    min-height: 30px !important;
+    padding: 0 8px 0 12px !important;
+    font-weight: 700 !important;
+}
+
+#tournamentEntriesModal .roster-chip svg {
+    width: 15px;
+    height: 15px;
+    color: #969ca6;
+}
+
+#tournamentEntriesModal .roster-chip em {
+    padding: 1px 6px;
+}
+
+.entry-group + .entry-group { margin-top: 0; }
+
+@media (max-width: 760px) {
+    .scheme-options,
+    .scheme-more-body {
+        grid-template-columns: 1fr;
+    }
+
+    #tournamentEntriesModal .ws-studio span { display: none; }
+}
