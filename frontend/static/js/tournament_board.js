@@ -132,7 +132,8 @@
         let order = 0;
         for (let slot = 1; slot <= maxSlot; slot += 1) {
             const entry = members.find((item) => item.group_slot === slot);
-            const code = `${group.name}${slot}`;
+            // Только номер ячейки: группа и так подписана в заголовке карточки.
+            const code = String(slot);
             if (entry) order += 1;
             cells.push(`
                 <div class="board-cell${entry ? ' filled' : ''}" data-cell data-group-index="${index}" data-slot="${slot}"
