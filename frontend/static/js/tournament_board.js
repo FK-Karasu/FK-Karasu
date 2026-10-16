@@ -515,8 +515,22 @@
         if (!ready && !isPairable(match)) return;
         board.popoverMatch = match;
         const pop = byId('scorePopover');
-        const playoff = match.stage === 'playoff';
+        // Пенальти бывают и в плей-офф, и в матчах за места.
+        const playoff = match.stage === 'playoff' || match.stage === 'placement';
         const value = (number) => (number === null || number === undefined ? '' : number);
+        if (!ready) {
+            // Пока команды не выбраны, вводить счёт некуда — только выбор пары.
+            pop.innerHTML = `
+                <p class="sp-title">${escapeHtml(match.label || 'Матч')}</p>
+                ${pairPickerMarkup(match)}
+                <p class="sp-hint">Сначала выберите обе команды — потом здесь можно будет внести счёт.</p>
+                <p class="sp-error" hidden></p>`;
+            pop.hidden = false;
+            board.anchor = anchor;
+            placePopover();
+            board.popoverOpenedAt = Date.now();
+            return;
+        }
         pop.innerHTML = `
             <p class="sp-title">${escapeHtml(match.label || (match.group_name ? `Группа ${match.group_name} · тур ${match.round_no}` : 'Матч'))}</p>
             ${isPairable(match) ? pairPickerMarkup(match) : ''}
@@ -801,7 +815,7 @@
         payload.kickoff_at = pop.querySelector('[data-sp="kickoff"]').value;
         payload.stadium_id = pop.querySelector('[data-sp="stadium"]').value || null;
         payload.pitch = pop.querySelector('[data-sp="pitch"]').value || null;
-        if (match.stage === 'playoff') {
+        if (match.stage === 'playoff' || match.stage === 'placement') {
             payload.home_penalty = read('hpen');
             payload.away_penalty = read('apen');
         }
@@ -986,6 +1000,18 @@
             if (target && !target.disabled) openPopover(target.dataset.boardMatch, target);
         });
         const pop = byId('scorePopover');
+        // Выбрали в одном списке команду, что стоит во втором, — меняем их местами.
+        pop.addEventListener('focusin', (event) => {
+            const select = event.target.closest('[data-pair]');
+            if (select) select.dataset.prev = select.value;
+        });
+        pop.addEventListener('change', (event) => {
+            const select = event.target.closest('[data-pair]');
+            if (!select) return;
+            const other = pop.querySelector(`[data-pair="${select.dataset.pair === 'home' ? 'away' : 'home'}"]`);
+            if (other && select.value && other.value === select.value) other.value = select.dataset.prev || '';
+            select.dataset.prev = select.value;
+        });
         pop.addEventListener('input', (event) => {
             syncPenalty();
             if (event.target.matches('[data-sp="home"], [data-sp="away"]')) renderGoals();

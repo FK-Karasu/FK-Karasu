@@ -1315,7 +1315,13 @@ async function switchCategory(age) {
     if (catalogState.entryTab === 'players') await loadPlayers();
 }
 
+function entryTabLocked(name) {
+    // Пока в категории меньше двух команд, «Турнир» и «Награды» не открываются.
+    return name !== 'entries' && !categoryOverview()?.steps?.entries;
+}
+
 function switchEntryTab(name) {
+    if (entryTabLocked(name)) name = 'entries';
     catalogState.entryTab = name;
     document.querySelectorAll('[data-entry-tab]').forEach((button) => {
         button.classList.toggle('active', button.dataset.entryTab === name);
@@ -1408,11 +1414,17 @@ function renderCategorySwitch() {
     box.innerHTML = ages.map((age) => {
         const count = catalogState.entries.filter((entry) =>
             entry.age_group === age && entry.status === 'confirmed').length;
+        const active = age === catalogState.age;
         return `<button type="button" role="tab" data-category="${escapeHtml(age)}"
-            aria-selected="${age === catalogState.age}" class="${age === catalogState.age ? 'active' : ''}">
-            ${escapeHtml(age)}<small>${count}</small></button>`;
+            aria-selected="${active}" class="${active ? 'active' : ''}">
+            <span class="cat-folder" aria-hidden="true">${active
+                ? '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H7.5a2 2 0 0 0-1.9 1.4L3 18.5z"/><path d="M6.6 11.6A1.5 1.5 0 0 1 8 10.5h13.4a1 1 0 0 1 1 1.3l-2 6.6a2 2 0 0 1-1.9 1.4H4.2z"/></svg>'
+                : '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'}</span>
+            <span class="cat-name">${escapeHtml(age)}</span><small>${count}</small></button>`;
     }).join('');
-    box.closest('.category-switch-row').hidden = ages.length < 2;
+    const single = ages.length < 2;
+    box.closest('.category-switch-row').hidden = single;
+    byId('tournamentEntriesModal').classList.toggle('single-category', single);
 }
 
 async function loadCategory() {
@@ -1489,7 +1501,11 @@ function renderSteps() {
     };
     document.querySelectorAll('[data-entry-tab]').forEach((button) => {
         button.classList.toggle('done', Boolean(marks[button.dataset.entryTab]));
+        const locked = entryTabLocked(button.dataset.entryTab);
+        button.disabled = locked;
+        button.title = locked ? 'Сначала заявите хотя бы 2 команды в этой категории' : '';
     });
+    if (entryTabLocked(catalogState.entryTab)) switchEntryTab('entries');
     // Следующий шаг — оранжевая точка на вкладке.
     let next = '';
     if (data) {
@@ -2453,7 +2469,7 @@ function renderPlayers() {
 function awardOptionsMarkup(award) {
     const stats = catalogState.playersStats;
     if (award.code === 'fair_play') {
-        return ['<option value="">— не присуждена —</option>'].concat(
+        return ['<option value="">Выбрать…</option>'].concat(
             (stats.fair_play || []).map((row) => `<option value="team:${row.entry_id}" ${
                 award.winner && award.winner.team_name === row.team_name && !award.winner.member_id
                     ? 'selected' : ''}>${escapeHtml(row.team_name)}</option>`)).join('');
@@ -2463,7 +2479,7 @@ function awardOptionsMarkup(award) {
         (stats[key] || []).forEach((row) => seen.set(row.member_id, row));
     });
     const people = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-    return ['<option value="">— не присуждена —</option>'].concat(
+    return ['<option value="">Выбрать…</option>'].concat(
         people.map((row) => `<option value="member:${row.member_id}" ${
             award.winner && award.winner.member_id === row.member_id ? 'selected' : ''
         }>${escapeHtml(row.name)} · ${escapeHtml(row.team_name)}</option>`)).join('');
@@ -2482,26 +2498,30 @@ function renderAwards() {
             <h3>Награды турнира</h3>
             <div class="awards-grid">
                 ${awards.map((award) => `
-                    <div class="award-card" data-award="${award.code}">
-                        <p class="award-title">${escapeHtml(award.title)}
-                            ${award.computed ? '<span class="award-auto">расчётная</span>' : ''}</p>
-                        <div class="award-winner">
-                            <span class="award-photo${award.winner && !award.winner.member_id ? ' round' : ''}"${
-                                award.winner && awardFace(award.winner)
-                                    ? ` style="background-image:url('${escapeHtml(
-                                        awardFace(award.winner))}')"` : ''}></span>
-                            <span>
-                                <strong>${award.winner ? escapeHtml(award.winner.name) : 'не присуждена'}</strong>
-                                <small>${award.winner ? escapeHtml(award.winner.team_name) : ''}</small>
-                            </span>
+                    <div class="award-card${award.winner ? ' has-winner' : ''}" data-award="${award.code}">
+                        <img class="award-art" src="/static/img/awards/${award.code}.webp" alt="" loading="lazy">
+                        <div class="award-body">
+                            <p class="award-title">${escapeHtml(award.title)}
+                                ${award.computed ? '<span class="award-auto" title="Система считает сама по протоколам">авто</span>' : ''}</p>
+                            ${award.winner ? `
+                                <p class="award-winner">
+                                    <span class="award-face"${awardFace(award.winner)
+                                        ? ` style="background-image:url('${escapeHtml(awardFace(award.winner))}')"` : ''}></span>
+                                    <strong>${escapeHtml(award.winner.name)}</strong>
+                                    ${award.winner.member_id ? `<small>${escapeHtml(award.winner.team_name)}</small>` : ''}
+                                </p>`
+                                : award.suggested ? `<p class="award-hint">предлагаем:
+                                    ${escapeHtml(award.suggested.name || award.suggested.team_name)}</p>` : ''}
+                            <div class="award-actions">
+                                <label class="award-pill">
+                                    <select data-award-select aria-label="Победитель: ${escapeHtml(award.title)}">${awardOptionsMarkup(award)}</select>
+                                </label>
+                                ${award.winner ? `<a class="award-cover" title="Обложка для соцсетей"
+                                    href="/api/tournaments/${catalogState.entriesTournamentId}/awards/${award.code}`
+                                    + `/cover.png?age_group=${encodeURIComponent(catalogState.playersAge)}"
+                                    download><i data-lucide="image-down"></i></a>` : ''}
+                            </div>
                         </div>
-                        ${award.suggested ? `<p class="award-hint">Система предлагает:
-                            ${escapeHtml(award.suggested.name || award.suggested.team_name)}</p>` : ''}
-                        <select data-award-select>${awardOptionsMarkup(award)}</select>
-                        ${award.winner ? `<a class="award-cover"
-                            href="/api/tournaments/${catalogState.entriesTournamentId}/awards/${award.code}`
-                            + `/cover.png?age_group=${encodeURIComponent(catalogState.playersAge)}"
-                            download><i data-lucide="image-down"></i> Обложка для соцсетей</a>` : ''}
                     </div>`).join('')}
             </div>
         </section>`;
