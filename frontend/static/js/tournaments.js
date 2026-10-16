@@ -21,7 +21,6 @@ const catalogState = {
     entriesTournamentId: null,
     entries: [],
     entryAgeGroups: [],
-    entryTeamIds: [],
     entryTeamHighlight: -1,
     groups: [],
     groupEntries: [],
@@ -40,7 +39,6 @@ const catalogState = {
     overview: null,
     formatDirty: false,
     entryTab: 'entries',
-    entryAges: [],
     roster: null,
     rosterTeamId: null,
     rosterDirty: false,
@@ -1072,126 +1070,65 @@ function renderEntryRing() {
         </svg>`;
 }
 
-function selectedEntryAges() {
-    return [...document.querySelectorAll('#entryAgeChips input:checked')].map((input) => input.value);
-}
-
-function pickerExcludedIds() {
-    const ages = selectedEntryAges();
-    // Команду не предлагаем, только если она уже есть во ВСЕХ отмеченных категориях:
-    // один клуб может играть сразу в 2010-2011 A, 2010-2011 B и 2012-2013 A.
-    const full = new Set(catalogState.teams
-        .filter((team) => ages.length && ages.every((age) => catalogState.entries.some((entry) =>
-            entry.age_group === age && Number(entry.team_id) === Number(team.id))))
-        .map((team) => Number(team.id)));
-    return new Set([...full, ...catalogState.entryTeamIds.map(Number)]);
-}
-
-function filteredPickerTeams() {
-    const query = byId('entryTeamInput').value.trim().toLowerCase();
-    const excluded = pickerExcludedIds();
-    return catalogState.teams.filter((team) => {
-        if (excluded.has(Number(team.id))) return false;
-        return !query || (team.name || '').toLowerCase().includes(query);
-    });
-}
-
-function renderTeamChips() {
-    const box = byId('entryTeamBox');
-    box.querySelectorAll('.team-chip').forEach((chip) => chip.remove());
-    const input = byId('entryTeamInput');
-    catalogState.entryTeamIds.forEach((id) => {
-        const team = catalogState.teams.find((item) => Number(item.id) === Number(id));
-        if (!team) return;
-        const chip = document.createElement('span');
-        chip.className = 'team-chip';
-        chip.innerHTML = `${escapeHtml(team.name)}
-            <button type="button" data-drop-team="${team.id}"
-                aria-label="Убрать ${escapeHtml(team.name)}">&times;</button>`;
-        box.insertBefore(chip, input);
-    });
-    input.placeholder = catalogState.entryTeamIds.length
-        ? 'Добавить ещё' : 'Начните вводить название';
-}
-
-function renderTeamPickerList() {
-    const list = byId('entryTeamList');
-    const teams = filteredPickerTeams();
-    if (!teams.length) {
-        list.innerHTML = `<p class="team-picker-empty">${byId('entryTeamInput').value.trim()
-            ? 'Команда не найдена'
-            : 'Все команды уже заявлены в этой категории'}</p>`;
-        return;
-    }
-    list.innerHTML = teams.map((team, index) => `
-        <button class="team-picker-option${index === catalogState.entryTeamHighlight ? ' active' : ''}"
-            type="button" role="option" aria-selected="false" data-pick-team="${team.id}">
-            <span class="catalog-row-icon">
-                ${team.logo_url
-                    ? `<img src="${escapeHtml(team.logo_url)}" alt="">`
-                    : `<span>${escapeHtml(initials(team.name))}</span>`}
-            </span>
-            <span class="team-picker-name">${escapeHtml(team.name)}</span>
-            <small>${escapeHtml(pluralizeMembers(Number(team.member_count) || 0))}</small>
-        </button>`).join('');
-}
-
-function openTeamPicker() {
-    catalogState.entryTeamHighlight = -1;
-    renderTeamPickerList();
-    byId('entryTeamList').hidden = false;
-    byId('entryTeamInput').setAttribute('aria-expanded', 'true');
-}
-
-function closeTeamPicker() {
-    byId('entryTeamList').hidden = true;
-    byId('entryTeamInput').setAttribute('aria-expanded', 'false');
-}
-
-function pickTeam(teamId) {
-    const team = catalogState.teams.find((item) => Number(item.id) === Number(teamId));
-    if (!team || catalogState.entryTeamIds.includes(team.id)) return;
-    catalogState.entryTeamIds.push(team.id);
-    // Список не закрываем: сразу можно выбрать следующую команду.
-    byId('entryTeamInput').value = '';
-    catalogState.entryTeamHighlight = -1;
-    renderTeamChips();
-    renderTeamPickerList();
-    byId('entryTeamInput').focus();
-}
-
-function dropTeamChip(teamId) {
-    catalogState.entryTeamIds = catalogState.entryTeamIds
-        .filter((id) => Number(id) !== Number(teamId));
-    renderTeamChips();
-    renderTeamPickerList();
-}
-
-function moveTeamHighlight(step) {
-    const teams = filteredPickerTeams();
-    if (!teams.length) return;
-    const next = catalogState.entryTeamHighlight + step;
-    catalogState.entryTeamHighlight = (next + teams.length) % teams.length;
-    renderTeamPickerList();
-    byId('entryTeamList').querySelector('.team-picker-option.active')
-        ?.scrollIntoView({ block: 'nearest' });
-}
+/* --- Заявка: слева все команды, справа — заявленные в выбранную категорию --- */
 
 function renderEntryPickers() {
-    renderTeamChips();
-    if (!byId('entryTeamList').hidden) renderTeamPickerList();
+    renderEntryPool();
+}
 
-    const groups = catalogState.entryAgeGroups;
-    // По умолчанию отмечена категория, которая сейчас открыта; можно добавить и другие.
-    let picked = (catalogState.entryAges || []).filter((age) => groups.includes(age));
-    if (!picked.length) picked = groups.includes(catalogState.age) ? [catalogState.age] : groups.slice(0, 1);
-    catalogState.entryAges = picked;
-    byId('entryAgeField').hidden = groups.length < 2;
-    byId('entryAgeChips').innerHTML = groups.map((age) => `
-        <label class="age-pick${picked.includes(age) ? ' on' : ''}">
-            <input type="checkbox" value="${escapeHtml(age)}" ${picked.includes(age) ? 'checked' : ''}>
-            <span>${escapeHtml(age)}</span>
-        </label>`).join('');
+function renderEntryPool() {
+    const list = byId('entryPoolList');
+    if (!list) return;
+    const age = catalogState.age;
+    const query = (byId('entryPoolSearch').value || '').trim().toLowerCase();
+    const entered = new Set(catalogState.entries
+        .filter((entry) => entry.age_group === age)
+        .map((entry) => Number(entry.team_id)));
+    const elsewhere = new Map();
+    catalogState.entries.forEach((entry) => {
+        if (entry.age_group === age || entry.status === 'declined') return;
+        const key = Number(entry.team_id);
+        if (!elsewhere.has(key)) elsewhere.set(key, []);
+        elsewhere.get(key).push(entry.age_group);
+    });
+    const free = catalogState.teams
+        .filter((team) => !entered.has(Number(team.id)))
+        .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+    const shown = free.filter((team) => !query || team.name.toLowerCase().includes(query));
+    catalogState.entryPoolShown = shown.map((team) => team.id);
+    byId('entryPoolCount').textContent = `${free.length}`;
+    byId('entryPoolAll').hidden = !query || shown.length < 2;
+    byId('entryPoolAll').textContent = `Заявить всех найденных (${shown.length})`;
+    list.innerHTML = shown.length ? shown.map((team) => `
+        <button type="button" class="entry-pool-item" data-pool-team="${team.id}" role="listitem"
+            title="Заявить в ${escapeHtml(age)}">
+            <span class="catalog-row-icon">${team.logo_url
+                ? `<img src="${escapeHtml(team.logo_url)}" alt="">` : `<span>${escapeHtml(initials(team.name))}</span>`}</span>
+            <span class="entry-pool-name">
+                <strong>${escapeHtml(team.name)}</strong>
+                <small>${elsewhere.has(Number(team.id))
+                    ? `уже в: ${escapeHtml(elsewhere.get(Number(team.id)).join(', '))}`
+                    : escapeHtml(pluralizeMembers(Number(team.member_count) || 0))}</small>
+            </span>
+            <span class="entry-pool-add" aria-hidden="true">→</span>
+        </button>`).join('') : `<p class="entry-pool-empty">${query
+            ? 'Ничего не найдено'
+            : catalogState.teams.length ? 'Все команды уже заявлены в эту категорию' : 'В базе пока нет команд — добавьте их во вкладке «Команды»'}</p>`;
+}
+
+async function enterTeams(teamIds) {
+    if (!teamIds.length || !catalogState.age) return;
+    try {
+        showFormError('entryFormError');
+        await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/entries`, {
+            method: 'POST',
+            body: JSON.stringify({ team_ids: teamIds, age_groups: [catalogState.age] }),
+        });
+        await loadEntries();
+        await loadCategory();
+    } catch (error) {
+        showFormError('entryFormError', error.message);
+    }
 }
 
 function otherCategories(entry) {
@@ -1207,12 +1144,16 @@ function renderEntries() {
     const entries = catalogState.entries.filter((entry) =>
         !catalogState.age || entry.age_group === catalogState.age);
     renderEntryRing();
+    byId('entryChosenTitle').textContent = catalogState.age ? `Заявлены в ${catalogState.age}` : 'Заявлены';
+    const confirmed = entries.filter((entry) => entry.status === 'confirmed').length;
+    byId('entryChosenCount').textContent = entries.length
+        ? `${entries.length} · подтвердили ${confirmed}` : '';
 
     if (!entries.length) {
         list.innerHTML = emptyCatalogMarkup(
             'users-round',
-            'Участников пока нет',
-            `Добавьте команды категории ${catalogState.age || ''}, которые будут играть на турнире.`,
+            'Пока никто не заявлен',
+            'Нажмите на команду в списке слева — она появится здесь.',
         );
         refreshIcons();
         return;
@@ -1295,7 +1236,6 @@ async function loadEntries() {
 async function switchCategory(age) {
     if (age === catalogState.age) return;
     setCategory(age);
-    catalogState.entryAges = [];
     catalogState.formatDirty = false;
     catalogState.playersStats = null;
     catalogState.playersAwards = [];
@@ -1338,42 +1278,6 @@ async function openTournamentEntries(tournamentId) {
     const steps = catalogState.overview?.steps || {};
     if (steps.entries && !steps.finished) switchEntryTab('board');
     renderSteps();
-}
-
-async function addTournamentEntry() {
-    const ageGroups = selectedEntryAges();
-    const teamIds = [...catalogState.entryTeamIds];
-    if (!teamIds.length) {
-        showFormError('entryFormError', 'Выберите команды из списка');
-        return;
-    }
-    if (!ageGroups.length) {
-        showFormError('entryFormError', 'Отметьте хотя бы одну возрастную категорию');
-        return;
-    }
-    try {
-        showFormError('entryFormError');
-        const result = await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/entries`, {
-            method: 'POST',
-            body: JSON.stringify({ team_ids: teamIds, age_groups: ageGroups }),
-        });
-        byId('entryTeamInput').value = '';
-        catalogState.entryTeamIds = [];
-        renderTeamChips();
-        const notice = byId('entryNotice');
-        notice.hidden = !(result.added || []).length;
-        notice.textContent = `Заявлено: ${(result.added || []).join(', ')}`;
-        window.clearTimeout(catalogState.entryNoticeTimer);
-        catalogState.entryNoticeTimer = window.setTimeout(() => { notice.hidden = true; }, 5000);
-        if (result.skipped && result.skipped.length) {
-            showFormError('entryFormError',
-                `Уже были заявлены: ${result.skipped.join(', ')}`);
-        }
-        await loadEntries();
-        await loadCategory();
-    } catch (error) {
-        showFormError('entryFormError', error.message);
-    }
 }
 
 async function updateEntryStatus(entryId, status) {
@@ -3148,58 +3052,20 @@ function bindEvents() {
         }
         renderProtocolEvents();
     });
-    byId('entryTeamInput').addEventListener('focus', openTeamPicker);
-    byId('entryTeamInput').addEventListener('input', openTeamPicker);
-    byId('entryTeamInput').addEventListener('keydown', (event) => {
-        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault();
-            if (byId('entryTeamList').hidden) openTeamPicker();
-            moveTeamHighlight(event.key === 'ArrowDown' ? 1 : -1);
-            return;
-        }
-        if (event.key === 'Enter') {
-            const teams = filteredPickerTeams();
-            const team = teams[catalogState.entryTeamHighlight] || (teams.length === 1 ? teams[0] : null);
-            if (team) {
-                event.preventDefault();
-                pickTeam(team.id);
-            }
-            return;
-        }
-        if (event.key === 'Escape') {
-            closeTeamPicker();
-            return;
-        }
-        if (event.key === 'Backspace' && !event.target.value && catalogState.entryTeamIds.length) {
-            dropTeamChip(catalogState.entryTeamIds[catalogState.entryTeamIds.length - 1]);
+    byId('entryPoolSearch').addEventListener('input', renderEntryPool);
+    byId('entryPoolList').addEventListener('click', (event) => {
+        const item = event.target.closest('[data-pool-team]');
+        if (!item) return;
+        item.disabled = true;
+        enterTeams([Number(item.dataset.poolTeam)]).catch(showPageError);
+    });
+    byId('entryPoolAll').addEventListener('click', () => {
+        const ids = catalogState.entryPoolShown || [];
+        if (ids.length && window.confirm(`Заявить ${ids.length} команд(ы) в ${catalogState.age}?`)) {
+            byId('entryPoolSearch').value = '';
+            enterTeams(ids).catch(showPageError);
         }
     });
-    byId('entryTeamBox').addEventListener('click', (event) => {
-        const drop = event.target.closest('[data-drop-team]');
-        if (drop) {
-            event.preventDefault();
-            dropTeamChip(drop.dataset.dropTeam);
-            return;
-        }
-        byId('entryTeamInput').focus();
-    });
-    byId('entryAgeChips').addEventListener('change', () => {
-        catalogState.entryAges = selectedEntryAges();
-        document.querySelectorAll('#entryAgeChips .age-pick').forEach((chip) =>
-            chip.classList.toggle('on', chip.querySelector('input').checked));
-        if (!byId('entryTeamList').hidden) renderTeamPickerList();
-    });
-    byId('entryTeamList').addEventListener('mousedown', (event) => {
-        // mousedown, а не click: до click поле теряет фокус и список успевает закрыться.
-        const option = event.target.closest('[data-pick-team]');
-        if (!option) return;
-        event.preventDefault();
-        pickTeam(option.dataset.pickTeam);
-    });
-    document.addEventListener('click', (event) => {
-        if (!event.target.closest('#entryTeamPicker')) closeTeamPicker();
-    });
-    byId('addEntryBtn').addEventListener('click', () => addTournamentEntry().catch(showPageError));
     byId('entriesList').addEventListener('change', (event) => {
         const select = event.target.closest('[data-entry-status]');
         if (select) updateEntryStatus(select.dataset.entryStatus, select.value).catch(showPageError);

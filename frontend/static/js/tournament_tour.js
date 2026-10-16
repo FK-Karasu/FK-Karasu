@@ -361,29 +361,21 @@
                 },
                 {
                     requires: hasTournament,
-                    target: '#entryTeamPicker',
+                    target: '.entry-pool',
                     modals: WORKSPACE,
                     entryTab: 'entries',
                     title: 'Шаг 1. Заявите команды',
-                    text: 'Начните вводить название и выберите команды из списка — можно сразу несколько.',
+                    text: 'Слева — все команды базы. Нажмите на команду — она заявится в категорию, '
+                        + 'выбранную вверху. Чтобы заявить клуб в другой возраст, переключите категорию '
+                        + 'и нажмите на него снова. «уже в: …» подсказывает, где клуб уже заявлен.',
                 },
                 {
                     requires: hasTournament,
-                    target: '#entryAgeChips',
-                    optional: true,
+                    target: '.entry-chosen',
                     modals: WORKSPACE,
                     entryTab: 'entries',
-                    title: 'В какие категории',
-                    text: 'Отметьте галочками все категории, где клуб играет, — например, 2010-2011 A, '
-                        + '2010-2011 B и 2012-2013 A. Заявки создадутся одним нажатием.',
-                },
-                {
-                    requires: hasTournament,
-                    target: '#addEntryBtn',
-                    modals: WORKSPACE,
-                    entryTab: 'entries',
-                    title: 'Заявить',
-                    text: 'Команды попадут в список со статусом «Приглашена».',
+                    title: 'Заявленные команды',
+                    text: 'Справа — кто заявлен в эту категорию: статус, число игроков, удаление.',
                 },
                 {
                     requires: hasTournament,

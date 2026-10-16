@@ -8,7 +8,7 @@
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101719">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101720">
 </head>
 <body>
     {% include '_sidebar.html' %}
@@ -390,32 +390,30 @@
                 <div class="score-popover" id="scorePopover" role="dialog" aria-label="Счёт матча" hidden></div>
 
                 <div data-entry-panel="entries">
-                <div class="entry-add-row">
-                    <div class="tournament-catalog-field team-picker" id="entryTeamPicker">
-                        <span>Команды</span>
-                        <div class="team-picker-box" id="entryTeamBox">
-                            <input id="entryTeamInput" type="text" autocomplete="off" role="combobox"
-                                aria-expanded="false" aria-controls="entryTeamList" aria-autocomplete="list"
-                                placeholder="Начните вводить название">
-                        </div>
-                        <div class="team-picker-list" id="entryTeamList" role="listbox" hidden></div>
-                    </div>
-                    <div class="tournament-catalog-field entry-age-field" id="entryAgeField">
-                        <span>Категории</span>
-                        <div class="entry-age-chips" id="entryAgeChips" role="group"
-                            aria-label="Категории для заявки"></div>
-                    </div>
-                    <button class="btn-primary" type="button" id="addEntryBtn">
-                        <i data-lucide="plus"></i>
-                        Заявить
-                    </button>
-                </div>
                 <div class="tournament-catalog-form-error" id="entryFormError" hidden></div>
-                <p class="scheme-success entry-notice" id="entryNotice" hidden></p>
-                
-
+                <div class="entry-panes">
+                    <section class="entry-pane entry-pool">
+                        <header>
+                            <strong>Все команды</strong>
+                            <span id="entryPoolCount"></span>
+                        </header>
+                        <label class="entry-search">
+                            <i data-lucide="search"></i>
+                            <input id="entryPoolSearch" type="search" placeholder="Поиск команды" autocomplete="off"
+                                aria-label="Поиск команды">
+                        </label>
+                        <div class="entry-pool-list" id="entryPoolList" role="list"></div>
+                        <button type="button" class="entry-pool-all" id="entryPoolAll" hidden>Заявить всех из списка</button>
+                    </section>
+                    <section class="entry-pane entry-chosen">
+                        <header>
+                            <strong id="entryChosenTitle">Заявлены</strong>
+                            <span id="entryChosenCount"></span>
+                        </header>
                 <div id="entriesList">
                     <div class="tournament-catalog-empty">Загрузка заявок…</div>
+                </div>
+                    </section>
                 </div>
                 </div>
 
@@ -953,8 +951,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}?v=2026080801"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101714"></script>
+    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101720"></script>
     <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101715"></script>
-    <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101703"></script>
+    <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101704"></script>
 </body>
 </html>
