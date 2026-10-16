@@ -244,7 +244,7 @@ function renderTournaments() {
                 </thead>
                 <tbody>
                     ${items.map((item) => `
-                        <tr>
+                        <tr class="tournament-row" data-row-tournament="${item.id}" title="Открыть турнир">
                             <td data-label="Турнир">
                                 <button class="team-table-team" type="button" data-open-tournament="${item.id}">
                                     <span class="catalog-row-icon"><i data-lucide="trophy"></i></span>
@@ -3314,6 +3314,12 @@ function bindEvents() {
         const deleteButton = event.target.closest('[data-delete-tournament]');
         if (editButton) openTournamentEditor(editButton.dataset.editTournament);
         if (deleteButton) deleteTournament(deleteButton.dataset.deleteTournament).catch(showPageError);
+        if (editButton || deleteButton) return;
+        // Клик в любом месте строки (кроме меню ⋮) открывает турнир.
+        const row = event.target.closest('[data-row-tournament]');
+        if (row && !event.target.closest('.catalog-actions-cell, details')) {
+            openTournamentEntries(row.dataset.rowTournament).catch(showPageError);
+        }
     });
     byId('teamList').addEventListener('click', (event) => {
         const menu = event.target.closest('.team-actions-menu');

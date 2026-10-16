@@ -309,7 +309,7 @@
                 <div class="bk-round" style="--depth:${index}">
                     <p class="bk-round-title">${index === 0 && placementRounds.length > 1 ? 'Полуфиналы' : 'Матчи за места'}</p>
                     <div class="bk-round-body">${placement.filter((match) => match.round_no === round).map((match) => `
-                        <div class="bk-slot">${bracketMatchMarkup(match, match.label)}</div>`).join('')}</div>
+                        <div class="bk-slot" data-slot-match="${match.id}">${bracketMatchMarkup(match, match.label)}</div>`).join('')}</div>
                 </div>`).join('')}</div>`
             : canAddPlacement ? `
             <div class="placement-offer">
@@ -344,18 +344,64 @@
             <div class="bk-round" style="--depth:${index}">
                 <p class="bk-round-title">${escapeHtml(round.label || 'Раунд')}</p>
                 <div class="bk-round-body">
-                    ${round.matches.map((match) => `<div class="bk-slot">${bracketMatchMarkup(match, numbers.get(match.id) || '')}</div>`).join('')}
+                    ${round.matches.map((match) => `<div class="bk-slot" data-slot-match="${match.id}">${bracketMatchMarkup(match, numbers.get(match.id) || '')}</div>`).join('')}
                 </div>
                 ${index === rounds.length - 1 && bronze ? `
                     <div class="bk-bronze">
                         <p class="bk-round-title">За 3 место</p>
-                        ${bracketMatchMarkup(bronze, numbers.get(bronze.id))}
+                        <div class="bk-slot" data-slot-match="${bronze.id}">${bracketMatchMarkup(bronze, numbers.get(bronze.id))}</div>
                     </div>` : ''}
             </div>`).join('');
 
         const results = data.results || [];
         byId('boardResults').innerHTML = results.length ? results.map((row) => `
             <span class="board-medal m${row.place}"><b>${row.place}</b>${logoMarkup(row.team_name, row.team_logo_url)}${escapeHtml(row.team_name)}</span>`).join('') : '';
+    }
+
+    /* Линии сетки: ступенькой от правого края матча к левому краю следующего.
+       Путь команды, которая уже прошла дальше, — оранжевый; переход проигравшего — пунктир. */
+    function drawConnectors(container, matches, { losers = false } = {}) {
+        if (!container) return;
+        container.querySelector(':scope > svg.bk-lines')?.remove();
+        const matchById = new Map(matches.map((match) => [match.id, match]));
+        const box = container.getBoundingClientRect();
+        const pos = (id) => {
+            const el = container.querySelector(`[data-slot-match="${id}"] .bk-match`);
+            if (!el) return null;
+            const rect = el.getBoundingClientRect();
+            return {
+                left: rect.left - box.left + container.scrollLeft,
+                right: rect.right - box.left + container.scrollLeft,
+                mid: rect.top - box.top + container.scrollTop + rect.height / 2,
+            };
+        };
+        const paths = [];
+        matches.forEach((match) => {
+            const links = [[match.next_match_id, 'win']];
+            if (losers) links.push([match.loser_next_match_id, 'lose']);
+            links.forEach(([targetId, kind]) => {
+                const target = matchById.get(targetId);
+                const from = pos(match.id);
+                const to = target && pos(target.id);
+                if (!from || !to) return;
+                const mid = from.right + Math.max(10, (to.left - from.right) / 2);
+                const done = kind === 'win' && Boolean(match.winner_entry_id)
+                    && [target.home.entry_id, target.away.entry_id].includes(match.winner_entry_id);
+                paths.push(`<path d="M${from.right} ${from.mid} H${mid} V${to.mid} H${to.left}"
+                    class="${kind === 'lose' ? 'lose' : done ? 'done' : ''}"/>`);
+            });
+        });
+        if (!paths.length) return;
+        container.insertAdjacentHTML('afterbegin', `
+            <svg class="bk-lines" width="${container.scrollWidth}" height="${container.scrollHeight}"
+                aria-hidden="true">${paths.join('')}</svg>`);
+    }
+
+    function redrawConnectors() {
+        const data = categoryOverview();
+        if (!data) return;
+        drawConnectors(byId('boardBracket'), data.playoff || []);
+        drawConnectors(byId('boardPlacement')?.querySelector('.placement-bracket'), data.placement || [], { losers: true });
     }
 
     /* --- Ввод счёта прямо на полотне --- */
@@ -795,6 +841,8 @@
         renderGroupsBoard(data);
         renderBracket(data);
         refreshIcons();
+        // Линии считаются по реальным размерам карточек — после отрисовки.
+        window.requestAnimationFrame(redrawConnectors);
     }
 
     function bind() {
@@ -862,4 +910,13 @@
     };
 
     bind();
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+        window.clearTimeout(resizeTimer);
+        resizeTimer = window.setTimeout(redrawConnectors, 120);
+    });
+    document.addEventListener('click', (event) => {
+        // Вкладка «Турнир» становится видимой — тогда у карточек появляются размеры.
+        if (event.target.closest('[data-entry-tab="board"]')) window.requestAnimationFrame(redrawConnectors);
+    });
 })();

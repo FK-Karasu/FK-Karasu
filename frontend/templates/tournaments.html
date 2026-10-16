@@ -8,7 +8,7 @@
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101712">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101717">
 </head>
 <body>
     {% include '_sidebar.html' %}
@@ -796,7 +796,7 @@
                 <p class="team-share-hint full">
                     Матчи раскладываются по турам на свободные поля. Команда не играет два матча
                     подряд, если есть возможность дать ей отдохнуть, а плей-офф начинается только
-                    после групп. Время и стадион потом правятся вручную в любой строке.
+                    после групп. Время и стадион потом правятся вручную в окошке матча.
                 </p>
                 <label class="tournament-catalog-field">
                     <span>Первый матч — дата</span>
@@ -952,8 +952,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}?v=2026080801"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101712"></script>
-    <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101713"></script>
+    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101714"></script>
+    <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101714"></script>
     <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101703"></script>
 </body>
 </html>

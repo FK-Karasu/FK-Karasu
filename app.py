@@ -6385,6 +6385,7 @@ def serialize_match(match):
         'away_penalty': match.away_penalty,
         'winner_entry_id': match.winner_entry_id,
         'next_match_id': match.next_match_id,
+        'loser_next_match_id': match.loser_next_match_id,
         'stadium_id': match.stadium_id,
         'stadium_name': match.stadium.name if match.stadium else None,
         'kickoff_at': match.kickoff_at.isoformat(timespec='minutes') if match.kickoff_at else None,
