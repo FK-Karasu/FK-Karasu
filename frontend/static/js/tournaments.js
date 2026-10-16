@@ -1952,9 +1952,24 @@ const STUDIO_BACKGROUNDS = [
     { key: 'custom', title: 'Своя картинка' },
 ];
 
+const STUDIO_TYPES = {
+    announce: { icon: 'megaphone', hint: 'Название, даты, место' },
+    schedule: { icon: 'calendar-days', hint: 'Дни, время, пары' },
+    match: { icon: 'swords', hint: 'Счёт одного матча' },
+    standings: { icon: 'table-2', hint: 'Очки команд группы' },
+    results: { icon: 'trophy', hint: 'Места категории' },
+    award: { icon: 'medal', hint: 'Лучший игрок и др.' },
+};
+
+const STUDIO_THEME_COLORS = {
+    dark: '#12141a', light: '#f7f5f3', grass: '#0c2e20', night: '#111833',
+};
+
 const studio = {
     options: null,
     template: 'announce',
+    format: 'post',
+    theme: 'dark',
     background: 'none',
     accent: '#ff9a2b',
     backgroundPath: null,
@@ -1972,17 +1987,52 @@ function studioValue(id) {
 function studioChips(host, items, current, attribute) {
     byId(host).innerHTML = items.map((item) => `
         <button type="button" class="studio-chip${item.key === current ? ' active' : ''}"
-            data-${attribute}="${escapeHtml(item.key)}">${escapeHtml(item.title)}</button>`).join('');
+            data-${attribute}="${escapeHtml(item.key)}">${item.dot
+                ? `<i class="studio-dot" style="background:${escapeHtml(item.dot)}"></i>` : ''}${escapeHtml(item.title)}</button>`).join('');
 }
 
-function studioSelect(id, items, valueKey, titleKey) {
-    byId(id).innerHTML = items.map((item) =>
-        `<option value="${escapeHtml(String(item[valueKey]))}">${escapeHtml(item[titleKey])}</option>`).join('');
+function studioMark(host, attribute, value) {
+    document.querySelectorAll(`#${host} [data-${attribute}]`).forEach((item) =>
+        item.classList.toggle('active', item.dataset[attribute] === value));
+}
+
+function renderStudioTypes() {
+    byId('studioTemplates').innerHTML = studio.options.templates.map((row) => {
+        const type = STUDIO_TYPES[row.key] || { icon: 'image', hint: '' };
+        return `
+            <button type="button" class="studio-type${row.key === studio.template ? ' active' : ''}"
+                data-template="${escapeHtml(row.key)}">
+                <i data-lucide="${type.icon}"></i>
+                <strong>${escapeHtml(row.title)}</strong>
+                <small>${escapeHtml(type.hint)}</small>
+            </button>`;
+    }).join('');
+}
+
+function renderStudioFormats() {
+    byId('studioFormats').innerHTML = studio.options.formats.map((row) => {
+        // Мини-рамка в пропорциях холста: сразу видно, вытянутый он или широкий.
+        const scale = 34 / Math.max(row.width, row.height);
+        return `
+            <button type="button" class="studio-format${row.key === studio.format ? ' active' : ''}"
+                data-format="${escapeHtml(row.key)}">
+                <span class="studio-format-frame"><i style="width:${Math.round(row.width * scale)}px;height:${Math.round(row.height * scale)}px"></i></span>
+                <strong>${escapeHtml(row.title)}</strong>
+                <small>${row.width}×${row.height}</small>
+            </button>`;
+    }).join('');
 }
 
 function studioSourceItems() {
     const options = studio.options;
     const age = studioValue('studioAge');
+    if (studio.template === 'schedule') {
+        const days = (options.days || []).filter((row) => !age || row.age_group === age);
+        const total = days.reduce((sum, row) => sum + row.count, 0);
+        return [{ value: '', title: `Все дни · ${total}` }].concat(days.map((row) => ({
+            value: row.value, title: `${row.title} · ${row.count}`,
+        })));
+    }
     if (studio.template === 'match') {
         return (options.matches || []).filter((row) => !age || row.age_group === age)
             .map((row) => ({ value: String(row.id), title: row.label }));
@@ -1998,25 +2048,39 @@ function studioSourceItems() {
     return [];
 }
 
+const STUDIO_EMPTY = {
+    schedule: 'Время матчей ещё не назначено — задайте его во вкладке «Сетка» → «Календарь».',
+    match: 'В категории пока нет матчей с известными соперниками.',
+    standings: 'В категории ещё нет групп — соберите сетку.',
+    award: 'Награды категории ещё не присуждены.',
+};
+
 function renderStudioSource() {
     const items = studioSourceItems();
     const field = byId('studioSourceField');
-    const labels = { match: 'Матч', standings: 'Группа', award: 'Награда' };
+    const labels = { schedule: 'День', match: 'Матч', standings: 'Группа', award: 'Награда' };
     field.hidden = !labels[studio.template];
+    const hint = byId('studioSourceHint');
+    const empty = studio.template === 'schedule'
+        ? items.length < 2 : (!field.hidden && !items.length);
+    hint.hidden = !empty;
+    hint.textContent = empty ? STUDIO_EMPTY[studio.template] : '';
     if (field.hidden) return;
     byId('studioSourceLabel').textContent = labels[studio.template];
     byId('studioSource').innerHTML = items.length
         ? items.map((item) =>
             `<option value="${escapeHtml(item.value)}">${escapeHtml(item.title)}</option>`).join('')
         : '<option value="">нет данных</option>';
+    // Один день помещается крупно — его и показываем по умолчанию, «Все дни» — по выбору.
+    if (studio.template === 'schedule' && items.length > 1) byId('studioSource').value = items[1].value;
 }
 
 function studioPayload() {
     const source = studioValue('studioSource');
     const payload = {
         template: studio.template,
-        format: studioValue('studioFormat'),
-        theme: studioValue('studioTheme'),
+        format: studio.format,
+        theme: studio.theme,
         font: studioValue('studioFont'),
         accent: studio.accent,
         background: studio.background === 'none' ? null : studio.background,
@@ -2030,6 +2094,7 @@ function studioPayload() {
         subtitle: studioValue('studioSubtitle'),
         note: studioValue('studioNote'),
     };
+    if (studio.template === 'schedule') payload.day = source;
     if (studio.template === 'match') payload.match_id = source;
     if (studio.template === 'standings') payload.group_id = source;
     if (studio.template === 'award') payload.award_code = source;
@@ -2060,6 +2125,8 @@ async function renderStudio() {
         if (studio.blobUrl) URL.revokeObjectURL(studio.blobUrl);
         studio.blobUrl = URL.createObjectURL(blob);
         byId('studioImage').src = studio.blobUrl;
+        const format = (studio.options.formats || []).find((row) => row.key === studio.format);
+        if (format) byId('studioSize').textContent = `${format.title} · ${format.width}×${format.height} px — это и есть готовый файл`;
     } catch (error) {
         showFormError('studioError', error.message);
     } finally {
@@ -2081,25 +2148,29 @@ async function openStudio(preset = {}) {
             `/api/tournaments/${catalogState.entriesTournamentId}/post-options`);
         studio.options = data;
         studio.template = preset.template || 'announce';
+        studio.format = (data.formats[0] || {}).key || 'post';
+        studio.theme = (data.themes[0] || {}).key || 'dark';
         studio.background = data.has_poster ? 'poster' : 'none';
         studio.backgroundPath = null;
 
-        studioChips('studioTemplates', data.templates.map(
-            (row) => ({ key: row.key, title: row.title })), studio.template, 'template');
+        renderStudioTypes();
+        renderStudioFormats();
+        studioChips('studioThemes', data.themes.map((row) => ({
+            key: row.key, title: row.title, dot: STUDIO_THEME_COLORS[row.key],
+        })), studio.theme, 'theme');
         studioChips('studioBackgrounds', STUDIO_BACKGROUNDS.filter(
             (row) => row.key !== 'poster' || data.has_poster), studio.background, 'background');
-        studioSelect('studioFormat', data.formats, 'key', 'title');
-        studioSelect('studioTheme', data.themes, 'key', 'title');
-        studioSelect('studioFont', data.fonts, 'key', 'title');
+        byId('studioFont').innerHTML = data.fonts.map((row) =>
+            `<option value="${escapeHtml(row.key)}">${escapeHtml(row.title)}</option>`).join('');
         byId('studioAge').innerHTML = (data.age_groups || []).map((age) =>
             `<option value="${escapeHtml(age)}">${escapeHtml(age)}</option>`).join('');
         if (preset.age_group) byId('studioAge').value = preset.age_group;
 
         byId('studioAccents').innerHTML = (data.accents || []).map((color) => `
             <button type="button" class="studio-swatch${color === studio.accent ? ' active' : ''}"
-                data-accent="${escapeHtml(color)}" style="background:${escapeHtml(color)} !important""
+                data-accent="${escapeHtml(color)}" style="background:${escapeHtml(color)} !important"
                 aria-label="Цвет ${escapeHtml(color)}"></button>`).join('')
-            + '<input type="color" id="studioAccentPicker" value="' + studio.accent + '">';
+            + '<input type="color" id="studioAccentPicker" value="' + studio.accent + '" title="Свой цвет">';
 
         ['studioEyebrow', 'studioCaption', 'studioTitle', 'studioSubtitle', 'studioNote']
             .forEach((id) => { byId(id).value = ''; });
@@ -2109,6 +2180,7 @@ async function openStudio(preset = {}) {
         if (preset.award_code) byId('studioSource').value = preset.award_code;
         byId('studioShadeRow').hidden = studio.background === 'none';
         byId('studioUploadField').hidden = studio.background !== 'custom';
+        refreshIcons();
 
         openModal('postStudioModal');
         await renderStudio();
@@ -2134,7 +2206,7 @@ function downloadStudio() {
     if (!studio.blobUrl) return;
     const link = document.createElement('a');
     link.href = studio.blobUrl;
-    link.download = `${studio.template}-${studioValue('studioFormat')}.png`;
+    link.download = `${studio.template}-${studio.format}.png`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -3021,9 +3093,22 @@ function bindEvents() {
         const template = event.target.closest('[data-template]');
         if (template) {
             studio.template = template.dataset.template;
-            document.querySelectorAll('#studioTemplates .studio-chip').forEach((chip) =>
-                chip.classList.toggle('active', chip.dataset.template === studio.template));
+            studioMark('studioTemplates', 'template', studio.template);
             renderStudioSource();
+            renderStudio();
+            return;
+        }
+        const format = event.target.closest('[data-format]');
+        if (format) {
+            studio.format = format.dataset.format;
+            studioMark('studioFormats', 'format', studio.format);
+            renderStudio();
+            return;
+        }
+        const theme = event.target.closest('.studio-chip[data-theme]');
+        if (theme) {
+            studio.theme = theme.dataset.theme;
+            studioMark('studioThemes', 'theme', studio.theme);
             renderStudio();
             return;
         }

@@ -8,7 +8,7 @@
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101724">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101725">
 </head>
 <body>
     {% include '_sidebar.html' %}
@@ -480,84 +480,92 @@
                 <div class="studio-controls">
                     <div class="tournament-catalog-form-error" id="studioError" hidden></div>
 
-                    <div class="studio-field">
-                        <span>Что публикуем</span>
-                        <div class="studio-chips" id="studioTemplates"></div>
-                    </div>
+                    <section class="studio-step">
+                        <h3><b>1</b> Что публикуем</h3>
+                        <div class="studio-types" id="studioTemplates"></div>
+                    </section>
 
-                    <div class="studio-field" id="studioSourceField" hidden>
-                        <span id="studioSourceLabel">Данные</span>
-                        <select id="studioSource"></select>
-                    </div>
+                    <section class="studio-step">
+                        <h3><b>2</b> Какие данные</h3>
+                        <div class="studio-row">
+                            <label class="studio-field">
+                                <span>Категория</span>
+                                <select id="studioAge"></select>
+                            </label>
+                            <label class="studio-field" id="studioSourceField" hidden>
+                                <span id="studioSourceLabel">Данные</span>
+                                <select id="studioSource"></select>
+                            </label>
+                        </div>
+                        <p class="studio-step-hint" id="studioSourceHint" hidden></p>
+                    </section>
 
-                    <div class="studio-row">
-                        <label class="studio-field">
-                            <span>Формат</span>
-                            <select id="studioFormat"></select>
-                        </label>
-                        <label class="studio-field">
-                            <span>Категория</span>
-                            <select id="studioAge"></select>
-                        </label>
-                    </div>
+                    <section class="studio-step">
+                        <h3><b>3</b> Куда публикуем</h3>
+                        <div class="studio-formats" id="studioFormats"></div>
+                    </section>
 
-                    <div class="studio-row">
-                        <label class="studio-field">
+                    <section class="studio-step">
+                        <h3><b>4</b> Оформление</h3>
+                        <div class="studio-field">
                             <span>Тема</span>
-                            <select id="studioTheme"></select>
+                            <div class="studio-chips" id="studioThemes"></div>
+                        </div>
+                        <div class="studio-row">
+                            <div class="studio-field">
+                                <span>Акцентный цвет</span>
+                                <div class="studio-swatches" id="studioAccents"></div>
+                            </div>
+                            <label class="studio-field">
+                                <span>Шрифт</span>
+                                <select id="studioFont"></select>
+                            </label>
+                        </div>
+                        <div class="studio-field">
+                            <span>Фон</span>
+                            <div class="studio-chips" id="studioBackgrounds"></div>
+                        </div>
+                        <div class="studio-row" id="studioShadeRow" hidden>
+                            <label class="studio-field">
+                                <span>Затемнение фона</span>
+                                <input id="studioShade" type="range" min="0" max="95" value="70">
+                            </label>
+                            <label class="studio-check">
+                                <input id="studioBlur" type="checkbox" checked>
+                                <span>Размыть фон</span>
+                            </label>
+                        </div>
+                        <label class="studio-field" id="studioUploadField" hidden>
+                            <span>Своя картинка фона</span>
+                            <input id="studioUpload" type="file" accept="image/*">
                         </label>
-                        <label class="studio-field">
-                            <span>Шрифт</span>
-                            <select id="studioFont"></select>
-                        </label>
-                    </div>
+                    </section>
 
-                    <div class="studio-field">
-                        <span>Акцентный цвет</span>
-                        <div class="studio-swatches" id="studioAccents"></div>
-                    </div>
-
-                    <div class="studio-field">
-                        <span>Фон</span>
-                        <div class="studio-chips" id="studioBackgrounds"></div>
-                    </div>
-
-                    <div class="studio-row" id="studioShadeRow" hidden>
-                        <label class="studio-field">
-                            <span>Затемнение фона</span>
-                            <input id="studioShade" type="range" min="0" max="95" value="70">
-                        </label>
-                        <label class="studio-check">
-                            <input id="studioBlur" type="checkbox" checked>
-                            <span>Размыть фон</span>
-                        </label>
-                    </div>
-
-                    <label class="studio-field" id="studioUploadField" hidden>
-                        <span>Своя картинка фона</span>
-                        <input id="studioUpload" type="file" accept="image/*">
-                    </label>
-
-                    <label class="studio-field">
-                        <span>Верхняя строка</span>
-                        <input id="studioEyebrow" type="text" maxlength="60" placeholder="Название турнира">
-                    </label>
-                    <label class="studio-field">
-                        <span>Подпись под ней</span>
-                        <input id="studioCaption" type="text" maxlength="90" placeholder="Дата · стадион">
-                    </label>
-                    <label class="studio-field">
-                        <span>Заголовок</span>
-                        <input id="studioTitle" type="text" maxlength="120" placeholder="По умолчанию из турнира">
-                    </label>
-                    <label class="studio-field">
-                        <span>Подзаголовок</span>
-                        <input id="studioSubtitle" type="text" maxlength="140" placeholder="По умолчанию из турнира">
-                    </label>
-                    <label class="studio-field">
-                        <span>Плашка внизу</span>
-                        <input id="studioNote" type="text" maxlength="60" placeholder="Например: Вход свободный">
-                    </label>
+                    <details class="studio-step studio-texts">
+                        <summary><h3><b>5</b> Свои тексты <small>необязательно — по умолчанию всё берётся из турнира</small></h3></summary>
+                        <div class="studio-texts-body">
+                            <label class="studio-field">
+                                <span>Верхняя строка</span>
+                                <input id="studioEyebrow" type="text" maxlength="60" placeholder="Название турнира">
+                            </label>
+                            <label class="studio-field">
+                                <span>Подпись под ней</span>
+                                <input id="studioCaption" type="text" maxlength="90" placeholder="Категория · дата · город">
+                            </label>
+                            <label class="studio-field">
+                                <span>Заголовок</span>
+                                <input id="studioTitle" type="text" maxlength="120" placeholder="По умолчанию из турнира">
+                            </label>
+                            <label class="studio-field">
+                                <span>Подзаголовок</span>
+                                <input id="studioSubtitle" type="text" maxlength="140" placeholder="По умолчанию из турнира">
+                            </label>
+                            <label class="studio-field">
+                                <span>Плашка внизу</span>
+                                <input id="studioNote" type="text" maxlength="60" placeholder="Например: Вход свободный">
+                            </label>
+                        </div>
+                    </details>
                 </div>
 
                 <div class="studio-preview">
@@ -565,7 +573,7 @@
                         <img id="studioImage" alt="Предпросмотр публикации">
                         <span class="studio-spinner" id="studioSpinner" hidden></span>
                     </div>
-                    <p class="studio-hint">Предпросмотр — это и есть готовый файл.</p>
+                    <p class="studio-hint" id="studioSize">Предпросмотр — это и есть готовый файл.</p>
                     <button class="btn-primary" type="button" id="studioDownload">
                         <i data-lucide="download"></i> Скачать PNG
                     </button>
@@ -953,7 +961,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}?v=2026080801"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101722"></script>
+    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101723"></script>
     <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101719"></script>
     <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101704"></script>
 </body>

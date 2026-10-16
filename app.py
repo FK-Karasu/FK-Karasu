@@ -9,6 +9,7 @@ import queue
 import re
 import math
 import calendar
+import functools
 import uuid
 import requests
 import hashlib
@@ -8828,6 +8829,7 @@ POST_THEMES = {
 }
 POST_TEMPLATES = {
     'announce': 'Анонс турнира',
+    'schedule': 'Календарь матчей',
     'match': 'Результат матча',
     'standings': 'Таблица группы',
     'results': 'Итоги турнира',
@@ -8836,6 +8838,7 @@ POST_TEMPLATES = {
 POST_ACCENTS = ['#ff9a2b', '#e63946', '#2a9d8f', '#4361ee', '#f4a261', '#111827']
 
 
+@functools.lru_cache(maxsize=256)
 def post_font(key, size, weight=400):
     filename = POST_FONTS.get(key, POST_FONTS['onest'])[0]
     font = ImageFont.truetype(os.path.join(POST_FONT_DIR, filename), size)
@@ -8871,14 +8874,15 @@ def wrap_text(draw, text, font, max_width):
     return lines
 
 
-def fit_text_font(draw, text, max_width, start, key, weight):
-    size = start
-    while size > 20:
+def fit_text_font(draw, text, max_width, start, key, weight, minimum=20):
+    size = int(start)
+    step = max(1, size // 24)
+    while size > minimum:
         font = post_font(key, size, weight)
         if draw.textlength(text or '', font=font) <= max_width:
             return font
-        size -= 4
-    return post_font(key, 20, weight)
+        size -= step
+    return post_font(key, int(minimum), weight)
 
 
 def paste_cover(canvas, image, box):
@@ -8923,38 +8927,64 @@ def post_background(canvas, params, theme_bg):
     return Image.blend(canvas, plate, max(0, min(95, shade)) / 100)
 
 
+def post_scale(params, value):
+    """Размер в пикселях для текущего формата: все шрифты и отступы задаются
+    для поста 1080×1350 и пропорционально пересчитываются под холст."""
+    return max(1, int(round(value * params['s'])))
+
+
+def post_center_text(draw, center_x, y, text, font, fill):
+    width = draw.textlength(text, font=font)
+    draw.text((center_x - width / 2, y), text, font=font, fill=fill)
+
+
 def post_header(canvas, params, margin):
     draw = ImageDraw.Draw(canvas)
+    S = lambda value: post_scale(params, value)
     tournament = params['tournament']
-    draw.text((margin, margin), (params.get('eyebrow') or tournament.name).upper(),
-              font=post_font(params['font'], 30, 700), fill=params['accent'])
+    eyebrow = (params.get('eyebrow') or tournament.name or '').upper()
+    font = fit_text_font(draw, eyebrow, canvas.width - margin * 2 - S(20), S(30), params['font'], 750,
+                         minimum=S(18))
+    draw.rounded_rectangle((margin, margin + S(4), margin + S(8), margin + S(34)), radius=S(4),
+                           fill=params['accent'])
+    draw.text((margin + S(22), margin), eyebrow, font=font, fill=params['ink'])
     line = params.get('caption') or ' · '.join(filter(None, [
         params.get('age_group'),
         tournament.start_date.strftime('%d.%m.%Y') if tournament.start_date else None,
         tournament.location,
     ]))
     if line:
-        draw.text((margin, margin + 44), line, font=post_font(params['font'], 26, 400), fill=params['muted'])
+        draw.text((margin + S(22), margin + S(46)), line,
+                  font=post_font(params['font'], S(24), 450), fill=params['muted'])
+    return margin + S(100)
 
 
 def post_footer(canvas, params, margin):
     draw = ImageDraw.Draw(canvas)
+    S = lambda value: post_scale(params, value)
     settings = ClubSettings.query.first()
     club = (settings.system_name if settings and settings.system_name else 'FK KARASU')
-    draw.text((margin, canvas.height - margin - 30), club,
-              font=post_font(params['font'], 26, 700), fill=params['muted'])
+    draw.text((margin, canvas.height - margin - S(26)), club.upper(),
+              font=post_font(params['font'], S(22), 750), fill=params['muted'])
+
+
+def post_block_top(canvas, params, block_height):
+    """Верх блока, чтобы он стоял по центру между шапкой и подвалом."""
+    top, bottom = params['content_top'], params['content_bottom']
+    return int(max(top, top + (bottom - top - block_height) / 2))
 
 
 def render_announce(canvas, params, margin):
     draw = ImageDraw.Draw(canvas)
+    S = lambda value: post_scale(params, value)
     tournament = params['tournament']
     inner = canvas.width - margin * 2
-    y = int(canvas.height * 0.3)
-    title = params.get('title') or tournament.name
-    font = post_font(params['font'], 96 if canvas.width >= 1080 else 64, 750)
-    for line in wrap_text(draw, title, font, inner)[:3]:
-        draw.text((margin, y), line, font=font, fill=params['ink'])
-        y += int(font.size * 1.12)
+    title = params.get('title') or tournament.name or ''
+    title_font = post_font(params['font'], S(96), 750)
+    title_lines = wrap_text(draw, title, title_font, inner)[:3]
+    while title_font.size > S(56) and any(draw.textlength(line, font=title_font) > inner for line in title_lines):
+        title_font = post_font(params['font'], title_font.size - S(6), 750)
+        title_lines = wrap_text(draw, title, title_font, inner)[:3]
 
     subtitle = params.get('subtitle')
     if subtitle is None:
@@ -8963,111 +8993,136 @@ def render_announce(canvas, params, margin):
             tournament_age_group_labels(tournament) and ', '.join(
                 tournament_age_group_labels(tournament)) or None,
         ]))
-    if subtitle:
-        y += 24
-        font = post_font(params['font'], 38, 400)
-        for line in wrap_text(draw, subtitle, font, inner)[:3]:
-            draw.text((margin, y), line, font=font, fill=params['muted'])
-            y += int(font.size * 1.3)
-
+    sub_font = post_font(params['font'], S(38), 400)
+    sub_lines = wrap_text(draw, subtitle, sub_font, inner)[:3] if subtitle else []
     note = params.get('note')
+
+    block = len(title_lines) * int(title_font.size * 1.12)
+    block += (S(24) + len(sub_lines) * int(sub_font.size * 1.3)) if sub_lines else 0
+    block += S(34) + S(74) if note else 0
+    y = post_block_top(canvas, params, block)
+
+    for line in title_lines:
+        draw.text((margin, y), line, font=title_font, fill=params['ink'])
+        y += int(title_font.size * 1.12)
+    if sub_lines:
+        y += S(24)
+        for line in sub_lines:
+            draw.text((margin, y), line, font=sub_font, fill=params['muted'])
+            y += int(sub_font.size * 1.3)
     if note:
-        y += 34
-        pill = post_font(params['font'], 34, 700)
+        y += S(34)
+        pill = post_font(params['font'], S(34), 700)
         width = draw.textlength(note, font=pill)
-        draw.rounded_rectangle((margin, y, margin + width + 56, y + 74), radius=37, fill=params['accent'])
-        draw.text((margin + 28, y + 16), note, font=pill, fill=params['on_accent'])
+        draw.rounded_rectangle((margin, y, margin + width + S(56), y + S(74)), radius=S(37), fill=params['accent'])
+        draw.text((margin + S(28), y + S(16)), note, font=pill, fill=params['on_accent'])
+
+
+def post_side_name(match, side):
+    entry = match.home_entry if side == 'home' else match.away_entry
+    if entry and entry.team:
+        return entry.team.name, entry.team.logo_path
+    label = match.home_label if side == 'home' else match.away_label
+    return (label or 'Соперник определится'), None
+
+
+def post_stage_label(match):
+    if match.label:
+        return match.label
+    if match.group:
+        return f'Группа {match.group.name}'
+    return ''
 
 
 def render_match(canvas, params, margin):
     draw = ImageDraw.Draw(canvas)
+    S = lambda value: post_scale(params, value)
     match = params.get('match')
     if not match:
         return render_announce(canvas, params, margin)
     center = canvas.width // 2
-    top = int(canvas.height * 0.28)
-    logo = 190 if canvas.height > 900 else 130
-    gap = int(canvas.width * 0.24)
+    logo = S(200)
+    gap = int(min(canvas.width * 0.26, S(300)))
+    name_size = S(40)
+    top = post_block_top(canvas, params, logo + S(260))
 
     for side, offset in (('home', -gap), ('away', gap)):
-        entry = match.home_entry if side == 'home' else match.away_entry
-        team = entry.team if entry else None
-        post_logo(canvas, team.logo_path if team else None, (center + offset, top + logo // 2),
-                  logo, params['plate'])
-        name = team.name if team else '—'
-        font = fit_text_font(draw, name, gap * 1.5, 40, params['font'], 700)
-        width = draw.textlength(name, font=font)
-        draw.text((center + offset - width / 2, top + logo + 26), name, font=font, fill=params['ink'])
+        name, logo_path = post_side_name(match, side)
+        post_logo(canvas, logo_path, (center + offset, top + logo // 2), logo, params['plate'])
+        font = fit_text_font(draw, name, gap * 1.4, name_size, params['font'], 700, minimum=S(22))
+        post_center_text(draw, center + offset, top + logo + S(26), name, font, params['ink'])
 
-    score = f'{match.home_score} : {match.away_score}' if match.is_played else '— : —'
-    font = post_font(params['font'], 92, 750)
-    width = draw.textlength(score, font=font)
-    draw.text((center - width / 2, top + logo // 2 - font.size * 0.62), score, font=font, fill=params['ink'])
+    score = f'{match.home_score} : {match.away_score}' if match.is_played else 'VS'
+    font = post_font(params['font'], S(104 if match.is_played else 72), 750)
+    post_center_text(draw, center, top + logo // 2 - font.size * 0.62, score, font, params['ink'])
 
     if match.home_penalty is not None and match.home_score == match.away_score:
         pen = f'по пенальти {match.home_penalty}:{match.away_penalty}'
-        font = post_font(params['font'], 30, 400)
-        width = draw.textlength(pen, font=font)
-        draw.text((center - width / 2, top + logo // 2 + 44), pen, font=font, fill=params['muted'])
+        post_center_text(draw, center, top + logo // 2 + S(52), pen,
+                         post_font(params['font'], S(28), 450), params['muted'])
 
-    stage = params.get('title') or (match.label or (
-        f'Группа {match.group.name}' if match.group else 'Матч турнира'))
-    font = post_font(params['font'], 40, 700)
-    width = draw.textlength(stage, font=font)
-    draw.text((center - width / 2, top + logo + 130), stage, font=font, fill=params['accent'])
+    stage = params.get('title') or post_stage_label(match) or 'Матч турнира'
+    post_center_text(draw, center, top + logo + S(130), stage,
+                     post_font(params['font'], S(40), 700), params['accent'])
 
     when = params.get('subtitle')
     if when is None and match.kickoff_at:
-        when = match.kickoff_at.strftime('%d.%m.%Y, %H:%M')
+        parts = [match.kickoff_at.strftime('%d.%m.%Y, %H:%M')]
+        if match.pitch:
+            parts.append(f'поле {match.pitch}')
+        when = ' · '.join(parts)
     if when:
-        font = post_font(params['font'], 30, 400)
-        width = draw.textlength(when, font=font)
-        draw.text((center - width / 2, top + logo + 190), when, font=font, fill=params['muted'])
+        post_center_text(draw, center, top + logo + S(192), when,
+                         post_font(params['font'], S(30), 450), params['muted'])
 
 
 def render_rows(canvas, params, margin, heading, rows):
     """Общая отрисовка списка: таблица группы и итоги устроены одинаково."""
     draw = ImageDraw.Draw(canvas)
-    y = int(canvas.height * 0.24)
+    S = lambda value: post_scale(params, value)
+    heading_h = S(96) if heading else 0
+    space = params['content_bottom'] - params['content_top'] - heading_h
+    step = max(S(72), min(S(140), int(space / max(len(rows), 1))))
+    k = step / S(120)  # строки плотнее — шрифт чуть меньше, но не мельче 80%
+    k = max(.8, min(1.0, k))
+    y = post_block_top(canvas, params, heading_h + step * len(rows))
     if heading:
-        font = post_font(params['font'], 56, 750)
-        draw.text((margin, y), heading, font=font, fill=params['ink'])
-        y += 96
+        draw.text((margin, y), heading, font=post_font(params['font'], S(56), 750), fill=params['ink'])
+        y += heading_h
 
-    space = canvas.height - y - margin - 60
-    step = max(84, min(150, int(space / max(len(rows), 1))))
+    badge_d = S(48 * k)
+    logo_d = S(58 * k)
     for index, row in enumerate(rows):
         cy = y + step // 2
-        badge = post_font(params['font'], 30, 750)
+        badge = post_font(params['font'], S(26 * k), 750)
         number = str(row.get('rank') or index + 1)
-        draw.ellipse((margin, cy - 24, margin + 48, cy + 24),
+        draw.ellipse((margin, cy - badge_d // 2, margin + badge_d, cy + badge_d // 2),
                      fill=params['accent'] if index == 0 else params['plate'])
-        width = draw.textlength(number, font=badge)
-        draw.text((margin + 24 - width / 2, cy - 18), number, font=badge,
-                  fill=params['on_accent'] if index == 0 else params['muted'])
+        post_center_text(draw, margin + badge_d / 2, cy - badge.size * .62, number, badge,
+                         params['on_accent'] if index == 0 else params['ink'])
 
-        post_logo(canvas, row.get('logo_path'), (margin + 48 + 26 + 26, cy), 52, params['plate'])
+        logo_x = margin + badge_d + S(22) + logo_d // 2
+        post_logo(canvas, row.get('logo_path'), (logo_x, cy), logo_d, params['plate'])
 
-        name_font = post_font(params['font'], 38, 700)
-        value_font = post_font(params['font'], 38, 750)
+        value_font = post_font(params['font'], S(40 * k), 750)
         value = str(row.get('value') or '')
         value_width = draw.textlength(value, font=value_font)
-        name_left = margin + 48 + 26 + 52 + 26
-        name_max = canvas.width - margin - value_width - 30 - name_left
+        name_left = logo_x + logo_d // 2 + S(22)
+        name_max = canvas.width - margin - value_width - S(30) - name_left
         name = row.get('name') or ''
-        name_font = fit_text_font(draw, name, name_max, 38, params['font'], 700)
+        name_font = fit_text_font(draw, name, name_max, S(38 * k), params['font'], 700, minimum=S(24))
         note = row.get('note')
         name_top = cy - name_font.size * (1.05 if note else 0.62)
         draw.text((name_left, name_top), name, font=name_font, fill=params['ink'])
         if note:
-            draw.text((name_left, cy + 6), note,
-                      font=post_font(params['font'], 24, 400), fill=params['muted'])
+            draw.text((name_left, cy + S(6)), note,
+                      font=post_font(params['font'], S(24 * k), 450), fill=params['muted'])
         if value:
             draw.text((canvas.width - margin - value_width, cy - value_font.size * 0.62),
                       value, font=value_font, fill=params['accent'])
         if index < len(rows) - 1:
             draw.line((margin, y + step - 1, canvas.width - margin, y + step - 1),
-                      fill=params['plate'], width=1)
+                      fill=params['plate'], width=max(1, S(2)))
         y += step
 
 
@@ -9080,12 +9135,12 @@ def render_standings(canvas, params, margin):
         group_id=group.id, stage=TournamentMatch.STAGE_GROUP).all()
     rows = []
     settings = category_settings(params['tournament'], group.age_group)
-    for row in build_standings(entries, matches, settings)[:7]:
+    for row in build_standings(entries, matches, settings)[:8]:
         entry = next((e for e in entries if e.team and e.team.name == row['team_name']), None)
         rows.append({
             'rank': row['place'],
             'name': row['team_name'],
-            'note': f"{row['played']} и · {row['goals_for']}–{row['goals_against']}",
+            'note': f"{row['played']} игр · мячи {row['goals_for']}–{row['goals_against']}",
             'value': str(row['points']),
             'logo_path': entry.team.logo_path if entry and entry.team else None,
         })
@@ -9095,11 +9150,11 @@ def render_standings(canvas, params, margin):
 def render_results(canvas, params, margin):
     places = category_results(params['tournament'], params.get('age_group') or '')
     titles = {1: 'Победитель', 2: 'Второе место', 3: 'Третье место', 4: 'Четвёртое место'}
+    entries = TournamentEntry.query.filter_by(
+        tournament_id=params['tournament'].id, age_group=params.get('age_group') or '').all()
     rows = []
-    for row in places:
-        entry = TournamentEntry.query.filter_by(
-            tournament_id=params['tournament'].id, age_group=params.get('age_group') or '').all()
-        team = next((e.team for e in entry if e.team and e.team.name == row['team_name']), None)
+    for row in places[:10]:
+        team = next((e.team for e in entries if e.team and e.team.name == row['team_name']), None)
         rows.append({
             'rank': row['place'],
             'name': row['team_name'],
@@ -9112,13 +9167,16 @@ def render_results(canvas, params, margin):
 
 def render_award(canvas, params, margin):
     draw = ImageDraw.Draw(canvas)
+    S = lambda value: post_scale(params, value)
     award = params.get('award')
     if not award:
         return render_announce(canvas, params, margin)
     center = canvas.width // 2
-    face = 440 if canvas.height > 1100 else 320
-    top = int(canvas.height * 0.22)
-    draw.ellipse((center - face // 2 - 8, top - 8, center + face // 2 + 8, top + face + 8),
+    space = params['content_bottom'] - params['content_top']
+    face = min(S(440), int(space - S(260)))
+    top = post_block_top(canvas, params, face + S(260))
+    ring = S(8)
+    draw.ellipse((center - face // 2 - ring, top - ring, center + face // 2 + ring, top + face + ring),
                  fill=params['accent'])
     member = award.member
     team = member.team if member else (award.entry.team if award.entry else None)
@@ -9131,30 +9189,209 @@ def render_award(canvas, params, margin):
     else:
         draw.ellipse((center - face // 2, top, center + face // 2, top + face), fill=params['plate'])
 
-    y = top + face + 60
-    title = params.get('title') or AWARD_CODES.get(award.code, '')
-    font = post_font(params['font'], 38, 700)
-    width = draw.textlength(title.upper(), font=font)
-    draw.text((center - width / 2, y), title.upper(), font=font, fill=params['accent'])
+    y = top + face + S(50)
+    title = (params.get('title') or AWARD_CODES.get(award.code, '')).upper()
+    post_center_text(draw, center, y, title, post_font(params['font'], S(38), 700), params['accent'])
 
-    y += 70
+    y += S(64)
     name = params.get('subtitle') or (member.full_name if member else (team.name if team else ''))
-    font = fit_text_font(draw, name, canvas.width - margin * 2, 84, params['font'], 750)
-    width = draw.textlength(name, font=font)
-    draw.text((center - width / 2, y), name, font=font, fill=params['ink'])
+    font = fit_text_font(draw, name, canvas.width - margin * 2, S(80), params['font'], 750, minimum=S(36))
+    post_center_text(draw, center, y, name, font, params['ink'])
 
-    y += int(font.size * 1.35)
+    y += int(font.size * 1.3)
     note = params.get('note')
     if note is None:
         note = team.name if (member and team) else ''
     if note:
-        font = post_font(params['font'], 34, 400)
-        width = draw.textlength(note, font=font)
-        draw.text((center - width / 2, y), note, font=font, fill=params['muted'])
+        post_center_text(draw, center, y, note, post_font(params['font'], S(32), 450), params['muted'])
+
+
+RU_WEEKDAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
+RU_WEEKDAYS_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+RU_MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа',
+                 'сентября', 'октября', 'ноября', 'декабря']
+
+
+def post_day_title(day, short=False):
+    weekday = (RU_WEEKDAYS_SHORT if short else RU_WEEKDAYS)[day.weekday()]
+    return f'{weekday}, {day.day} {RU_MONTHS_GEN[day.month - 1]}'
+
+
+def schedule_matches_for_post(tournament, age_group, day):
+    query = TournamentMatch.query.filter(
+        TournamentMatch.tournament_id == tournament.id,
+        TournamentMatch.kickoff_at.isnot(None))
+    if age_group:
+        query = query.filter(TournamentMatch.age_group == age_group)
+    matches = [m for m in query.all() if not m.is_bye]
+    if day:
+        matches = [m for m in matches if m.kickoff_at.date().isoformat() == day]
+    matches.sort(key=lambda m: (m.kickoff_at, m.pitch or 0, m.id))
+    return matches
+
+
+def render_schedule(canvas, params, margin):
+    """Календарь матчей: дни, время, поле и пары с эмблемами."""
+    draw = ImageDraw.Draw(canvas)
+    S = lambda value: post_scale(params, value)
+    matches = schedule_matches_for_post(params['tournament'], params.get('age_group'), params.get('day'))
+    title = params.get('title') or ('Расписание матчей' if not params.get('day') else
+                                     post_day_title(matches[0].kickoff_at.date()) if matches else 'Расписание')
+    title_font = fit_text_font(draw, title, canvas.width - margin * 2, S(56), params['font'], 750,
+                               minimum=S(34))
+    top = params['content_top']
+    draw.text((margin, top), title, font=title_font, fill=params['ink'])
+    top += int(title_font.size * 1.5)
+
+    if not matches:
+        draw.text((margin, top + S(20)), 'Время матчей ещё не назначено',
+                  font=post_font(params['font'], S(32), 450), fill=params['muted'])
+        return
+
+    days = {}
+    for match in matches:
+        days.setdefault(match.kickoff_at.date(), []).append(match)
+    show_day_headers = len(days) > 1 or not params.get('day')
+
+    space = params['content_bottom'] - top
+    head_h = S(64) if show_day_headers else 0
+    row_h = S(104)
+    min_row = S(86)
+    need = len(days) * head_h + len(matches) * row_h
+    if need > space:
+        row_h = max(min_row, int((space - len(days) * head_h) / len(matches)))
+    else:
+        # Свободно (сторис, мало матчей) — строки крупнее, чтобы не висела пустота.
+        row_h = min(S(128), int((space - len(days) * head_h) / len(matches)))
+    # Не влезает даже плотно — показываем первые матчи и пишем, сколько осталось.
+    capacity = []
+    used, shown = 0, 0
+    more_h = S(48)
+    for day, items in days.items():
+        if used + head_h + row_h > space - more_h:
+            break
+        used += head_h
+        fit = []
+        for match in items:
+            if used + row_h > space - (more_h if shown + len(fit) + 1 < len(matches) else 0):
+                break
+            fit.append(match)
+            used += row_h
+        if not fit:
+            used -= head_h
+            break
+        capacity.append((day, fit))
+        shown += len(fit)
+        if len(fit) < len(items):
+            break
+
+    k = max(.83, min(1.2, row_h / S(104)))
+    time_w = S(132 * k)
+    logo_d = S(56 * k)
+    pill_w, pill_h = S(104 * k), S(46 * k)
+    bg = params['bg']
+    ink = params['ink']
+    card = tuple(int(bg[i] + (ink[i] - bg[i]) * .08) for i in range(3))
+    time_font = post_font(params['font'], S(36 * k), 750)
+    meta_font = post_font(params['font'], S(21 * k), 500)
+    pill_font = post_font(params['font'], S(28 * k), 750)
+    multi_age = not params.get('age_group')
+
+    # Один размер имён на всю картинку: длинное название не делает свою строку мельче соседних.
+    name_max = (canvas.width - margin * 2 - time_w - S(32)) / 2 - pill_w / 2 - logo_d - S(34)
+    name_font = post_font(params['font'], S(30 * k), 700)
+    for _, items in capacity:
+        for match in items:
+            for side in ('home', 'away'):
+                name = post_side_name(match, side)[0]
+                if draw.textlength(name, font=name_font) > name_max:
+                    name_font = fit_text_font(draw, name, name_max, name_font.size, params['font'], 700,
+                                              minimum=S(24))
+
+    y = top
+    for day, items in capacity:
+        if show_day_headers:
+            day_font = post_font(params['font'], S(30), 750)
+            label = post_day_title(day).upper()
+            draw.text((margin, y + S(12)), label, font=day_font, fill=params['accent'])
+            line_x = margin + draw.textlength(label, font=day_font) + S(20)
+            stadiums = sorted({m.stadium.name for m in items if m.stadium and m.stadium.name})
+            if stadiums:
+                place = ', '.join(stadiums)
+                place_font = fit_text_font(draw, place, canvas.width - margin - line_x - S(40),
+                                           S(22), params['font'], 500, minimum=S(14))
+                place_w = draw.textlength(place, font=place_font)
+                draw.text((canvas.width - margin - place_w, y + S(18)), place, font=place_font,
+                          fill=params['muted'])
+                line_end = canvas.width - margin - place_w - S(20)
+            else:
+                line_end = canvas.width - margin
+            if line_end > line_x:
+                draw.line((line_x, y + S(32), line_end, y + S(32)), fill=params['plate'], width=max(1, S(2)))
+            y += head_h
+
+        for match in items:
+            box = (margin, y + S(5), canvas.width - margin, y + row_h - S(5))
+            draw.rounded_rectangle(box, radius=S(18 * k), fill=card)
+            cy = (box[1] + box[3]) // 2
+            when = match.kickoff_at.strftime('%H:%M')
+            meta = f'Поле {match.pitch}' if match.pitch else ''
+            time_y = cy - time_font.size * (1.0 if meta else .62)
+            post_center_text(draw, margin + time_w / 2, time_y, when, time_font, ink)
+            if meta:
+                post_center_text(draw, margin + time_w / 2, cy + S(6 * k), meta, meta_font, params['muted'])
+            draw.line((margin + time_w, box[1] + S(14 * k), margin + time_w, box[3] - S(14 * k)),
+                      fill=params['plate'], width=max(1, S(2)))
+
+            area_left = margin + time_w + S(16)
+            area_right = canvas.width - margin - S(16)
+            cx = (area_left + area_right) // 2
+            stage = post_stage_label(match)
+            if multi_age and match.age_group:
+                stage = ' · '.join(filter(None, [match.age_group, stage]))
+            pill_y = cy - pill_h // 2 - (S(10 * k) if stage else 0)
+            played = match.is_played
+            draw.rounded_rectangle((cx - pill_w // 2, pill_y, cx + pill_w // 2, pill_y + pill_h),
+                                   radius=pill_h // 2, fill=params['accent'] if played else params['plate'])
+            score = f'{match.home_score}:{match.away_score}' if played else 'VS'
+            post_center_text(draw, cx, pill_y + pill_h / 2 - pill_font.size * .62, score, pill_font,
+                             params['on_accent'] if played else ink)
+            if stage:
+                stage_font = fit_text_font(draw, stage, pill_w * 2.4, S(20 * k), params['font'], 600,
+                                           minimum=S(14))
+                post_center_text(draw, cx, pill_y + pill_h + S(4), stage, stage_font, params['muted'])
+
+            for side in ('home', 'away'):
+                name, logo_path = post_side_name(match, side)
+                font = name_font
+                while len(name) > 4 and draw.textlength(name, font=font) > name_max:
+                    name = name[:-2].rstrip() + '…'
+                width = draw.textlength(name, font=font)
+                if side == 'home':
+                    logo_cx = cx - pill_w // 2 - S(14) - logo_d // 2
+                    text_x = logo_cx - logo_d // 2 - S(14) - width
+                else:
+                    logo_cx = cx + pill_w // 2 + S(14) + logo_d // 2
+                    text_x = logo_cx + logo_d // 2 + S(14)
+                post_logo(canvas, logo_path, (int(logo_cx), cy), logo_d, params['plate'])
+                draw.text((text_x, cy - font.size * .62), name, font=font,
+                          fill=ink if entry_known(match, side) else params['muted'])
+            y += row_h
+
+    hidden = len(matches) - shown
+    if hidden > 0:
+        draw.text((margin, y + S(10)), f'и ещё {hidden} {tournament_engine.plural_matches(hidden)} — полный календарь в турнире',
+                  font=post_font(params['font'], S(24), 500), fill=params['muted'])
+
+
+def entry_known(match, side):
+    entry = match.home_entry if side == 'home' else match.away_entry
+    return bool(entry and entry.team)
 
 
 POST_RENDERERS = {
     'announce': render_announce,
+    'schedule': render_schedule,
     'match': render_match,
     'standings': render_standings,
     'results': render_results,
@@ -9169,21 +9406,26 @@ def build_post_image(tournament, data):
         data.get('theme'), POST_THEMES['dark'])
     accent = hex_to_rgb(data.get('accent'))
     light_theme = data.get('theme') == 'light'
+    # Светлый акцент — тёмный текст на плашке, тёмный акцент — белый.
+    on_accent = (23, 25, 31) if sum(c * w for c, w in zip(accent, (.299, .587, .114))) > 150 else (255, 255, 255)
 
     canvas = Image.new('RGB', (width, height), theme_bg)
     params = {
         'tournament': tournament,
+        's': min(width / 1080, height / 850),
         'font': data.get('font') if data.get('font') in POST_FONTS else 'onest',
         'accent': accent,
+        'bg': theme_bg,
         'ink': theme_ink,
         'muted': theme_muted,
         'plate': (240, 237, 233) if light_theme else (44, 48, 58),
-        'on_accent': (23, 25, 31),
+        'on_accent': on_accent,
         'background': data.get('background'),
         'background_path': data.get('background_path'),
         'shade': data.get('shade', 70),
         'blur': data.get('blur'),
         'age_group': data.get('age_group'),
+        'day': data.get('day') or None,
         'title': data.get('title') or None,
         'subtitle': data.get('subtitle') if data.get('subtitle') != '' else None,
         'note': data.get('note') or None,
@@ -9201,8 +9443,10 @@ def build_post_image(tournament, data):
             tournament_id=tournament.id, age_group=data.get('age_group') or '',
             code=data['award_code']).first()
 
-    margin = 80 if width >= 1080 else 60
-    post_header(canvas, params, margin)
+    margin = post_scale(params, 72)
+    header_bottom = post_header(canvas, params, margin)
+    params['content_top'] = header_bottom + post_scale(params, 40)
+    params['content_bottom'] = height - margin - post_scale(params, 70)
     POST_RENDERERS[template](canvas, params, margin)
     post_footer(canvas, params, margin)
     return canvas
@@ -9233,6 +9477,15 @@ def tournament_post_options_api(tournament_id):
                 awards.append({'code': row.code, 'age_group': age_group,
                                'title': AWARD_CODES.get(row.code, row.code)})
 
+    day_counts = {}
+    for m in matches:
+        if m.kickoff_at and not m.is_bye:
+            key = (m.age_group, m.kickoff_at.date())
+            day_counts[key] = day_counts.get(key, 0) + 1
+    days = [{'age_group': age, 'value': day.isoformat(), 'count': count,
+             'title': post_day_title(day, short=True)}
+            for (age, day), count in sorted(day_counts.items(), key=lambda item: (item[0][1], item[0][0]))]
+
     return jsonify({
         'success': True,
         'templates': [{'key': key, 'title': title} for key, title in POST_TEMPLATES.items()],
@@ -9247,6 +9500,7 @@ def tournament_post_options_api(tournament_id):
                      'stage': m.stage} for m in matches
                     if m.home_entry_id and m.away_entry_id],
         'groups': [{'id': g.id, 'age_group': g.age_group, 'name': g.name} for g in groups],
+        'days': days,
         'awards': awards,
     })
 
