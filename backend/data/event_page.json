@@ -5,20 +5,44 @@
   },
   "hero": {
     "eyebrow": "KARASU EVENT · ТАШКЕНТ",
-    "title_lines": ["СБОРЫ", "И ТУРНИРЫ"],
+    "title_lines": [
+      "СБОРЫ",
+      "И ТУРНИРЫ"
+    ],
     "accent": "ПОД КЛЮЧ",
     "lead": "Принимаем команды на учебно-тренировочные сборы и турниры: проживание, питание, поля, трансфер и спарринг-партнёры. Вы тренируетесь — всё остальное берём на себя.",
     "image": "img/event/v1-aerial.webp",
     "cta_primary": "Подобрать проживание",
     "cta_secondary": "Ближайшие турниры",
     "stats": [
-      {"value": "от 44$", "label": "проживание в сутки"},
-      {"value": "24/7", "label": "поддержка на сборах"},
-      {"value": "600 м", "label": "до стадиона"},
-      {"value": "4", "label": "варианта проживания"}
+      {
+        "value": "от 44$",
+        "label": "проживание в сутки"
+      },
+      {
+        "value": "24/7",
+        "label": "поддержка на сборах"
+      },
+      {
+        "value": "600 м",
+        "label": "до стадиона"
+      },
+      {
+        "value": "4",
+        "label": "варианта проживания"
+      }
     ]
   },
-  "marquee": ["Проживание", "Питание", "Трансфер", "Поля", "Спарринги", "Судьи", "Фото и видео", "Поддержка 24/7"],
+  "marquee": [
+    "Проживание",
+    "Питание",
+    "Трансфер",
+    "Поля",
+    "Спарринги",
+    "Судьи",
+    "Фото и видео",
+    "Поддержка 24/7"
+  ],
   "stay": {
     "eyebrow": "Проживание",
     "title": "ВЫБЕРИТЕ, ГДЕ ЖИТЬ",
@@ -29,32 +53,83 @@
         "tag": "Рядом с полем",
         "price": "44$",
         "unit": "сутки",
-        "features": ["Номера на 3–4 человека", "Санузлы и душевые общие", "Завтрак, обед и ужин — порционно", "Конференц-зал", "До центра города 25 минут"],
-        "photos": ["img/event/v1-rooms.webp", "img/event/v1-rooms-2.webp", "img/event/v1-dining.webp", "img/event/v1-field.webp"]
+        "features": [
+          "Номера на 3–4 человека",
+          "Санузлы и душевые общие",
+          "Завтрак, обед и ужин — порционно",
+          "Конференц-зал",
+          "До центра города 25 минут"
+        ],
+        "photos": [
+          "img/event/v1-rooms.webp",
+          "img/event/v1-rooms-2.webp",
+          "img/event/v1-dining.webp",
+          "img/event/v1-field.webp"
+        ]
       },
       {
         "name": "Отель «Стандарт»",
         "tag": "Шведский стол",
         "price": "55$",
         "unit": "сутки",
-        "features": ["Номера на 2–3 человека", "Санузел и душ в номере", "Завтрак — шведский стол", "Обед и ужин — порционно", "SPA, сауна, бассейн", "Wi-Fi, телевизор", "До центра города 10 минут"],
-        "photos": ["img/event/v2-room.webp", "img/event/v2-lobby.webp", "img/event/v2-dining.webp", "img/event/v2-buffet.webp"]
+        "features": [
+          "Номера на 2–3 человека",
+          "Санузел и душ в номере",
+          "Завтрак — шведский стол",
+          "Обед и ужин — порционно",
+          "SPA, сауна, бассейн",
+          "Wi-Fi, телевизор",
+          "До центра города 10 минут"
+        ],
+        "photos": [
+          "img/event/v2-room.webp",
+          "img/event/v2-lobby.webp",
+          "img/event/v2-dining.webp",
+          "img/event/v2-buffet.webp"
+        ]
       },
       {
         "name": "Отель «Комфорт»",
         "tag": "Двухместные номера",
         "price": "63$",
         "unit": "сутки",
-        "features": ["Номера на 2 человека", "Санузел и душ в номере", "Завтрак — шведский стол", "Обед и ужин — порционно", "SPA, сауна, бассейн", "Wi-Fi, телевизор", "До центра города 15 минут"],
-        "photos": ["img/event/v3-room.webp", "img/event/v3-lounge.webp", "img/event/v3-dining.webp", "img/event/v3-pool.webp"]
+        "features": [
+          "Номера на 2 человека",
+          "Санузел и душ в номере",
+          "Завтрак — шведский стол",
+          "Обед и ужин — порционно",
+          "SPA, сауна, бассейн",
+          "Wi-Fi, телевизор",
+          "До центра города 15 минут"
+        ],
+        "photos": [
+          "img/event/v3-room.webp",
+          "img/event/v3-lounge.webp",
+          "img/event/v3-dining.webp",
+          "img/event/v3-pool.webp"
+        ]
       },
       {
         "name": "Отель «Премиум»",
         "tag": "Прачечная и SPA",
         "price": "66$",
         "unit": "сутки",
-        "features": ["Номера на 2–3 человека", "Санузел и душ в номере", "Завтрак — шведский стол", "Обед и ужин — порционно", "Услуги прачечной", "SPA, сауна, бассейн", "Wi-Fi, телевизор", "До центра города 20 минут"],
-        "photos": ["img/event/v4-building.webp", "img/event/v4-room.webp", "img/event/v4-room-2.webp", "img/event/v4-bath.webp"]
+        "features": [
+          "Номера на 2–3 человека",
+          "Санузел и душ в номере",
+          "Завтрак — шведский стол",
+          "Обед и ужин — порционно",
+          "Услуги прачечной",
+          "SPA, сауна, бассейн",
+          "Wi-Fi, телевизор",
+          "До центра города 20 минут"
+        ],
+        "photos": [
+          "img/event/v4-building.webp",
+          "img/event/v4-room.webp",
+          "img/event/v4-room-2.webp",
+          "img/event/v4-bath.webp"
+        ]
       }
     ]
   },
@@ -62,13 +137,37 @@
     "eyebrow": "Инфраструктура",
     "title": "ВСЁ ДЛЯ ТРЕНИРОВОК",
     "items": [
-      {"image": "img/event/v1-field.webp", "caption": "Поле с искусственным газоном", "size": "wide"},
-      {"image": "img/event/spa-gym.webp", "caption": "Тренажёрный зал", "size": "tall"},
-      {"image": "img/event/v1-hall.webp", "caption": "Зал для разминки"},
-      {"image": "img/event/v1-class.webp", "caption": "Класс для теории"},
-      {"image": "img/event/spa-pool.webp", "caption": "Бассейн", "size": "wide"},
-      {"image": "img/event/spa-sauna.webp", "caption": "Сауна для восстановления"},
-      {"image": "img/event/v1-conference.webp", "caption": "Конференц-зал"}
+      {
+        "image": "img/event/v1-field.webp",
+        "caption": "Поле с искусственным газоном",
+        "size": "wide"
+      },
+      {
+        "image": "img/event/spa-gym.webp",
+        "caption": "Тренажёрный зал",
+        "size": "tall"
+      },
+      {
+        "image": "img/event/v1-hall.webp",
+        "caption": "Зал для разминки"
+      },
+      {
+        "image": "img/event/v1-class.webp",
+        "caption": "Класс для теории"
+      },
+      {
+        "image": "img/event/spa-pool.webp",
+        "caption": "Бассейн",
+        "size": "wide"
+      },
+      {
+        "image": "img/event/spa-sauna.webp",
+        "caption": "Сауна для восстановления"
+      },
+      {
+        "image": "img/event/v1-conference.webp",
+        "caption": "Конференц-зал"
+      }
     ]
   },
   "location": {
@@ -114,10 +213,14 @@
     "empty": "Скоро объявим новые турниры — оставьте заявку, и мы пригласим вашу команду первой."
   },
   "contact": {
-    "title_lines": ["ГОТОВЫ", "ПРИЕХАТЬ?"],
+    "title_lines": [
+      "ГОТОВЫ",
+      "ПРИЕХАТЬ?"
+    ],
     "text": "Расскажите, сколько человек в команде и на какие даты — подберём проживание, поля и спарринги за один день.",
-    "phone": "",
-    "telegram": "",
-    "instagram": ""
+    "phone": "+998 90 131 10 35",
+    "telegram": "Shamakfl",
+    "instagram": "",
+    "contact_name": "Шамиль"
   }
 }
