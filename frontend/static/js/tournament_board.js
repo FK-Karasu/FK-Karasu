@@ -85,6 +85,22 @@
         return list;
     }
 
+    const TEMPLATE_ART = {
+        league: '/static/img/tournament/format-league.webp',
+        groups: '/static/img/tournament/format-groups.webp',
+        knockout: '/static/img/tournament/format-knockout.webp',
+    };
+
+    function templateArt(key) {
+        if (key === 'league' || key === 'knockout') return TEMPLATE_ART[key];
+        return TEMPLATE_ART.groups;
+    }
+
+    function logoMarkup(name, url) {
+        return `<span class="board-logo">${url
+            ? `<img src="${escapeHtml(url)}" alt="">` : escapeHtml(initials(name))}</span>`;
+    }
+
     function activeTemplateKey(data) {
         const settings = data?.settings;
         if (!settings) return '';
@@ -160,7 +176,7 @@
         const advance = categoryOverview()?.settings?.format === 'groups_playoff'
             ? categoryOverview().settings.advance : 0;
         const code = (entry) => `${letter}${entry.group_slot || ''}`;
-        const head = members.map((entry) => `<th title="${escapeHtml(entry.team_name)}">${escapeHtml(code(entry))}</th>`).join('');
+        const head = members.map((entry) => `<th title="${escapeHtml(entry.team_name)}"><span class="mx-head">${logoMarkup(entry.team_name, entry.team_logo_url)}${escapeHtml(code(entry))}</span></th>`).join('');
         const body = members.map((rowEntry) => {
             const stat = rows.get(rowEntry.id);
             const cells = members.map((colEntry) => {
@@ -183,7 +199,7 @@
             const place = stat?.place;
             return `
                 <tr class="${advance && block.finished && place <= advance ? 'mx-qualified' : ''}">
-                    <th class="mx-team"><span class="board-code">${escapeHtml(code(rowEntry))}</span>${escapeHtml(rowEntry.team_name)}</th>
+                    <th class="mx-team"><span class="mx-team-cell"><span class="board-code">${escapeHtml(code(rowEntry))}</span>${logoMarkup(rowEntry.team_name, rowEntry.team_logo_url)}<span class="mx-team-name">${escapeHtml(rowEntry.team_name)}</span></span></th>
                     ${cells}
                     <td class="mx-num">${stat ? stat.played : 0}</td>
                     <td class="mx-num">${stat ? `${stat.diff > 0 ? '+' : ''}${stat.diff}` : 0}</td>
@@ -259,7 +275,7 @@
             const team = match.home.is_bye ? match.away : match.home;
             return `
                 <div class="bk-match bye">
-                    <div class="bk-row${team.entry_id ? '' : ' pending'}"><span>${escapeHtml(team.team_name)}</span></div>
+                    <div class="bk-row${team.entry_id ? '' : ' pending'}"><span class="bk-team">${team.entry_id ? logoMarkup(team.team_name, team.team_logo_url) : ''}<span class="bk-name">${escapeHtml(team.team_name)}</span></span></div>
                     <div class="bk-row pending"><span>проходит без игры</span></div>
                 </div>`;
         }
@@ -269,7 +285,7 @@
             const win = match.winner_entry_id && match.winner_entry_id === team.entry_id;
             return `
                 <div class="bk-row${team.entry_id ? '' : ' pending'}${win ? ' win' : ''}">
-                    <span class="bk-name">${escapeHtml(team.team_name)}</span>
+                    <span class="bk-team">${team.entry_id ? logoMarkup(team.team_name, team.team_logo_url) : ''}<span class="bk-name">${escapeHtml(team.team_name)}</span></span>
                     <span class="bk-score">${score === null ? '' : score}${pen !== null && pen !== undefined
                         && match.home_score === match.away_score && score !== null ? `<small>(${pen})</small>` : ''}</span>
                 </div>`;
@@ -373,8 +389,10 @@
         const below = rect.bottom + 8 + height < window.innerHeight;
         pop.style.left = `${left}px`;
         pop.style.top = `${below ? rect.bottom + 8 : Math.max(12, rect.top - height - 8)}px`;
-        pop.querySelector('[data-sp="home"]').focus();
+        // Без прокрутки: иначе окно турнира прокрутится и окошко тут же закроется.
+        pop.querySelector('[data-sp="home"]').focus({ preventScroll: true });
         pop.querySelector('[data-sp="home"]').select();
+        board.popoverOpenedAt = Date.now();
     }
 
     function syncPenalty() {
@@ -478,6 +496,7 @@
             <button type="button" role="radio" aria-checked="${template.key === active}"
                 class="board-template${template.key === active ? ' active' : ''}" data-template-key="${template.key}"
                 ${locked && template.key !== active ? 'disabled' : ''}>
+                <img class="board-template-art" src="${templateArt(template.key)}" alt="" loading="lazy">
                 <strong>${escapeHtml(template.title)}</strong>
                 <small>${escapeHtml(template.sub)}</small>
             </button>`).join('') : '<span class="board-empty">Нужно минимум 2 подтверждённые команды</span>';
@@ -547,7 +566,10 @@
         document.addEventListener('pointerdown', (event) => {
             if (!pop.hidden && !event.target.closest('#scorePopover, [data-board-match]')) closePopover();
         });
-        byId('tournamentEntriesModal').addEventListener('scroll', closePopover, true);
+        // Прокрутили окно — окошко счёта отрывается от матча, закрываем (но не сразу после открытия).
+        byId('tournamentEntriesModal').addEventListener('scroll', () => {
+            if (Date.now() - (board.popoverOpenedAt || 0) > 400) closePopover();
+        }, true);
     }
 
     // Встраиваемся в общую перерисовку категории.

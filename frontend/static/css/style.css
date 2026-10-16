@@ -16915,3 +16915,68 @@ table.stat-table tr.stat-muted td { opacity: .5; }
 }
 
 .mx-wrap .tiebreak-note { padding: 0 10px 8px; }
+
+/* --- Иллюстрации форматов и логотипы в шахматке/сетке --- */
+
+.format-card-art,
+.board-template-art {
+    display: block;
+    width: 100%;
+    aspect-ratio: 3 / 2;
+    object-fit: cover;
+    border-radius: 10px;
+    background: #fbfaf9;
+}
+
+.format-card-art { margin-bottom: 4px; }
+
+#tournamentEntriesModal .board-template {
+    width: 190px;
+    gap: 4px;
+    padding: 8px !important;
+}
+
+#tournamentEntriesModal .board-template strong,
+#tournamentEntriesModal .board-template small { padding: 0 4px; }
+
+.mx-team-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 190px;
+}
+
+.mx-team-cell .board-code { margin-right: 0; }
+
+.mx-team-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mx-table .mx-team { max-width: 200px; }
+
+.mx-head {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.mx-table .board-logo,
+.bk-team .board-logo {
+    flex: 0 0 22px;
+    width: 22px;
+    height: 22px;
+    font-size: 9px;
+}
+
+.bk-team {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+@media (max-width: 760px) {
+    #tournamentEntriesModal .board-template { width: calc(50% - 4px); }
+}

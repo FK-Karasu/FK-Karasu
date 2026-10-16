@@ -8,7 +8,7 @@
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101701">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026101702">
 </head>
 <body>
     {% include '_sidebar.html' %}
@@ -427,21 +427,21 @@
                         <div class="format-cards" id="formatCards" role="radiogroup" aria-label="Формат турнира">
                             <label class="format-card">
                                 <input type="radio" name="tournamentFormat" value="groups_playoff">
-                                <span class="format-card-icon"><i data-lucide="layout-grid"></i></span>
+                                <img class="format-card-art" src="{{ url_for('static', filename='img/tournament/format-groups.webp') }}" alt="" loading="lazy">
                                 <strong>Группы + плей-офф</strong>
                                 <small>Сначала каждый с каждым в своей группе, лучшие выходят в сетку на вылет.
                                     Как на чемпионате мира.</small>
                             </label>
                             <label class="format-card">
                                 <input type="radio" name="tournamentFormat" value="league">
-                                <span class="format-card-icon"><i data-lucide="list-ordered"></i></span>
+                                <img class="format-card-art" src="{{ url_for('static', filename='img/tournament/format-league.webp') }}" alt="" loading="lazy">
                                 <strong>Круговой турнир</strong>
                                 <small>Все играют со всеми в одной таблице. Чемпион — первое место.
                                     Удобно, если команд 3–8.</small>
                             </label>
                             <label class="format-card">
                                 <input type="radio" name="tournamentFormat" value="knockout">
-                                <span class="format-card-icon"><i data-lucide="git-branch"></i></span>
+                                <img class="format-card-art" src="{{ url_for('static', filename='img/tournament/format-knockout.webp') }}" alt="" loading="lazy">
                                 <strong>Олимпийская система</strong>
                                 <small>Сразу сетка по жребию: проиграл — выбыл. Самый короткий турнир.</small>
                             </label>
@@ -1066,7 +1066,7 @@
     <script src="{{ url_for('static', filename='js/sidebar.js') }}?v=2026080801"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026101701"></script>
-    <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101701"></script>
+    <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101703"></script>
     <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101701"></script>
 </body>
 </html>
