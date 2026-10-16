@@ -18469,3 +18469,200 @@ table.stat-table tr.stat-muted td { opacity: .5; }
     #postStudioModal .studio-body { grid-template-columns: minmax(0, 1fr); }
     #postStudioModal .studio-preview { order: -1; }
 }
+
+/* --- Дисквалификация, замены и подсказки тренеру --- */
+
+.card-y, .card-r {
+    display: inline-block;
+    width: 9px;
+    height: 13px;
+    border-radius: 2px;
+    background: #f5c518;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .12);
+}
+
+.card-r { background: #e5372b; }
+
+.roster-cards, .discipline-cards { display: inline-flex; gap: 2px; flex: 0 0 auto; }
+
+.roster-player.disqualified {
+    border-color: #f6c2bc !important;
+    background: #fff5f4 !important;
+    cursor: default;
+}
+
+.roster-player.disqualified .roster-info strong { color: #8a8f99; text-decoration: line-through; }
+.roster-player.disqualified .roster-info small { color: #b42318; }
+
+.roster-flag.ok { background: #e7f5ec; color: #0f7a4a; }
+.roster-flag.swap { background: #eef2ff; color: #3949ab; }
+
+#rosterModal .roster-replace {
+    height: 30px !important;
+    min-height: 30px !important;
+    max-width: 170px;
+    padding: 0 8px !important;
+    border: 1px solid #f3a79f !important;
+    border-radius: 8px !important;
+    background: #fff !important;
+    color: #b42318 !important;
+    font-size: 12px !important;
+    font-weight: 650 !important;
+}
+
+#rosterModal .roster-replace.empty { cursor: pointer; }
+
+.roster-summary.bad {
+    border-color: #f6c2bc;
+    background: #fff1ef;
+    color: #b42318;
+}
+
+.coach-tips {
+    margin: 0 0 12px;
+    padding: 10px 14px;
+    border: 1px solid #ffe0bb;
+    border-radius: 12px;
+    background: #fffaf3;
+    color: #444a54;
+    font-size: 13px;
+}
+
+.coach-tips summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #9a4d00;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.coach-tips summary svg { width: 16px; height: 16px; }
+.coach-tips ul { display: grid; gap: 6px; margin: 10px 0 2px; padding-left: 18px; line-height: 1.45; }
+
+.coach-hint {
+    margin: 0 0 12px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    background: #f7f5f3;
+    color: #5f6673;
+    font-size: 12.5px;
+    line-height: 1.45;
+}
+
+.protocol-player.out { opacity: .55; }
+.protocol-player.out .protocol-name { text-decoration: line-through; }
+.protocol-out, .protocol-risk {
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 10.5px;
+    font-style: normal;
+    font-weight: 700;
+}
+.protocol-out { background: #fde3df; color: #b42318; }
+.protocol-risk { background: #fff4cc; color: #8a6100; }
+
+.protocol-discipline {
+    margin: 10px 0 0;
+    padding: 10px 12px;
+    border: 1px solid #f6c2bc;
+    border-radius: 10px;
+    background: #fff5f4;
+    color: #8f1d14;
+    font-size: 13px;
+}
+
+.protocol-discipline[hidden] { display: none; }
+.protocol-discipline p { margin: 0; }
+.protocol-discipline p + p { margin-top: 4px; }
+
+.discipline-list { display: grid; gap: 8px; }
+
+.discipline-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.4fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border: 1px solid #ecebe9;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.discipline-row.out { border-color: #f6c2bc; background: #fff8f7; }
+.discipline-row.risk { border-color: #ffe39a; background: #fffcf0; }
+.discipline-who, .discipline-state { display: grid; gap: 2px; min-width: 0; }
+.discipline-who small, .discipline-state small { color: #8a8f99; font-size: 12px; }
+.discipline-row.out .discipline-state b { color: #b42318; }
+.discipline-row.risk .discipline-state b { color: #8a6100; }
+
+#tournamentEntriesModal .discipline-fix {
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 12px !important;
+    border: 1px solid #ee7800 !important;
+    border-radius: 999px !important;
+    background: #fff !important;
+    color: #b45f09 !important;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    white-space: nowrap;
+}
+
+.discipline-fix.ok { color: #0f7a4a; font-size: 12.5px; font-weight: 650; }
+
+#tournamentEntriesModal .entry-move {
+    height: 32px !important;
+    min-height: 32px !important;
+    max-width: 150px;
+    padding: 0 8px !important;
+    border: 1px solid #ecebe9 !important;
+    border-radius: 8px !important;
+    background: #fff !important;
+    color: #5f6673 !important;
+    font-size: 12px !important;
+}
+
+@media (max-width: 760px) {
+    .discipline-row { grid-template-columns: auto minmax(0, 1fr); }
+}
+
+#rosterModal .roster-replace {
+    grid-column: 1 / -1;
+    width: 100% !important;
+    max-width: none !important;
+    height: 32px !important;
+    min-height: 32px !important;
+}
+
+#tournamentEntriesModal #entriesList .entry-move {
+    flex: 0 0 132px;
+    width: 132px !important;
+}
+
+#disciplineBoard .discipline-block { margin-bottom: 18px; }
+
+/* flex на ячейке ломал ширину таблицы — последняя колонка уезжала за край */
+#tournamentEntriesModal #entriesList td.team-member-actions {
+    display: table-cell !important;
+    width: 1%;
+    padding-right: 12px;
+}
+
+#tournamentEntriesModal #entriesList td.team-member-actions > * {
+    display: inline-flex;
+    vertical-align: middle;
+    margin-left: 6px;
+}
+
+#tournamentEntriesModal .board-templates { grid-auto-columns: minmax(0, 260px); }
+
+#tournamentEntriesModal .board-templates .board-template-art {
+    height: auto;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+}
+
+#tournamentEntriesModal #entriesList .catalog-data-table th:nth-child(3) { width: 120px; }
+#tournamentEntriesModal #entriesList .catalog-data-table th:last-child { width: 210px; }
+#tournamentEntriesModal #entriesList td.team-member-actions { width: auto; text-align: right; }

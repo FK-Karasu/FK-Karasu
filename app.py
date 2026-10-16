@@ -1714,6 +1714,7 @@ def ensure_tournament_tables():
         member_columns = {col['name'] for col in inspector.get_columns('tournament_team_members')}
         entry_columns = {col['name'] for col in inspector.get_columns('tournament_entries')}
         fixture_columns = {col['name'] for col in inspector.get_columns('tournament_fixtures')}
+        entry_player_columns = {col['name'] for col in inspector.get_columns('tournament_entry_players')}
         team_column_definitions = {
             'trainer_name': 'VARCHAR(200)',
             'trainer_photo_path': 'VARCHAR(300)',
@@ -1752,6 +1753,8 @@ def ensure_tournament_tables():
             pending.append(('tournament_entries', 'group_id', 'INTEGER'))
         if 'group_slot' not in entry_columns:
             pending.append(('tournament_entries', 'group_slot', 'INTEGER'))
+        if 'replaces_member_id' not in entry_player_columns:
+            pending.append(('tournament_entry_players', 'replaces_member_id', 'INTEGER'))
         for column_name, column_type in (
             ('home_penalty', 'INTEGER'),
             ('away_penalty', 'INTEGER'),
@@ -5902,6 +5905,59 @@ def tournament_entries_api(tournament_id):
     return jsonify({'success': True, 'added': added, 'skipped': skipped, 'missing': missing}), 201
 
 
+@app.route('/api/tournament-entries/<int:entry_id>/move', methods=['POST'])
+@login_required
+def tournament_entry_move_api(entry_id):
+    """Перенести ошибочно заявленную команду в другую категорию турнира.
+
+    Заявку не удаляем и не создаём заново: меняется только категория. Нельзя,
+    если команда уже сыграла. Если категория-источник уже разложена по группам,
+    её календарь сбрасывается (как при удалении команды до первых результатов).
+    """
+    ensure_tournament_tables()
+    if not has_tournament_permission('edit'):
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    entry = db.session.get(TournamentEntry, entry_id)
+    if not entry:
+        return jsonify({'success': False, 'message': 'Заявка не найдена'}), 404
+    tournament = db.session.get(Tournament, entry.tournament_id)
+    target = ((request.get_json() or {}).get('age_group') or '').strip()
+    if target not in tournament_age_group_labels(tournament) or target == entry.age_group:
+        return jsonify({'success': False, 'message': 'Выберите другую категорию турнира'}), 400
+    team_name = entry.team.name if entry.team else 'Команда'
+    if TournamentEntry.query.filter_by(tournament_id=entry.tournament_id, team_id=entry.team_id,
+                                       age_group=target).first():
+        return jsonify({'success': False, 'message': f'{team_name} уже заявлена в {target}'}), 409
+    played = TournamentMatch.query.filter(
+        or_(TournamentMatch.home_entry_id == entry.id, TournamentMatch.away_entry_id == entry.id),
+        TournamentMatch.home_score.isnot(None)).first()
+    if played:
+        return jsonify({'success': False, 'message': f'{team_name} уже сыграла в {entry.age_group} — перенести нельзя'}), 409
+
+    calendar_reset = False
+    # Сетку трогаем, только если команда в ней уже стоит (в группе или в матчах).
+    in_calendar = bool(entry.group_id) or TournamentMatch.query.filter(
+        or_(TournamentMatch.home_entry_id == entry.id, TournamentMatch.away_entry_id == entry.id)).first() is not None
+    if in_calendar and entry.status == TournamentEntry.STATUS_CONFIRMED:
+        if category_has_results(entry.tournament_id, entry.age_group):
+            return jsonify({'success': False, 'message':
+                            f'В {entry.age_group} уже сыграны матчи — состав категории закреплён'}), 409
+        delete_category_matches(entry.tournament_id, entry.age_group)
+        calendar_reset = True
+    source = entry.age_group
+    TournamentAward.query.filter_by(entry_id=entry.id).delete(synchronize_session=False)
+    # Игроки по возрасту подходили старой категории — раскладываем заново.
+    TournamentEntryPlayer.query.filter_by(entry_id=entry.id).delete(synchronize_session=False)
+    entry.age_group = target
+    entry.group_id = None
+    entry.group_slot = None
+    db.session.flush()
+    auto_assign_roster(tournament, entry.team_id)
+    db.session.commit()
+    return jsonify({'success': True, 'calendar_reset': calendar_reset,
+                    'message': f'{team_name}: {source} → {target}'})
+
+
 @app.route('/api/tournament-entries/<int:entry_id>', methods=['PUT', 'DELETE'])
 @login_required
 def tournament_entry_detail_api(entry_id):
@@ -6028,6 +6084,10 @@ TIEBREAK_TITLES = {
 }
 
 
+# Столько жёлтых карточек за турнир — и игрок дисквалифицирован, как за красную.
+YELLOW_LIMIT_DEFAULT = 3
+
+
 def tournament_rules(tournament):
     try:
         data = json.loads(tournament.formats or '{}')
@@ -6046,8 +6106,12 @@ def tournament_rules(tournament):
         match_minutes = max(5, min(240, int(rules.get('match_minutes') or 30)))
     except (TypeError, ValueError):
         match_minutes = 30
+    try:
+        yellow_limit = max(2, min(10, int(rules.get('yellow_limit') or YELLOW_LIMIT_DEFAULT)))
+    except (TypeError, ValueError):
+        yellow_limit = YELLOW_LIMIT_DEFAULT
     return {'allow_play_up': bool(rules.get('allow_play_up')), 'tiebreak': tiebreak,
-            'match_minutes': match_minutes}
+            'match_minutes': match_minutes, 'yellow_limit': yellow_limit}
 
 
 def save_tournament_rules(tournament, rules):
@@ -6062,6 +6126,7 @@ def save_tournament_rules(tournament, rules):
         'allow_play_up': bool(rules.get('allow_play_up', current['allow_play_up'])),
         'tiebreak': rules.get('tiebreak') if rules.get('tiebreak') in TIEBREAK_TITLES else current['tiebreak'],
         'match_minutes': rules.get('match_minutes') or current['match_minutes'],
+        'yellow_limit': rules.get('yellow_limit') or current['yellow_limit'],
     }
     data['_rules'] = merged
     tournament.formats = json.dumps(data, ensure_ascii=False)
@@ -6202,6 +6267,79 @@ def member_played_for(tournament_id, member_id):
     return event.entry_id if event else None
 
 
+STAGE_SEQUENCE = {'group': 0, 'placement': 1, 'playoff': 1}
+
+
+def match_sequence_key(match):
+    """Порядок матчей во времени: по началу, а без времени — по стадии и туру."""
+    return (match.kickoff_at or datetime.max, STAGE_SEQUENCE.get(match.stage, 1),
+            match.round_no or 0, match.id)
+
+
+def match_short_title(match):
+    home = match.home_entry.team.name if match.home_entry and match.home_entry.team else '—'
+    away = match.away_entry.team.name if match.away_entry and match.away_entry.team else '—'
+    when = match.kickoff_at.strftime('%d.%m %H:%M') if match.kickoff_at else None
+    return ' · '.join(filter(None, [f'{home} — {away}', when]))
+
+
+def discipline_reason_text(state, limit):
+    if not state or not state['disqualified']:
+        return ''
+    if state['reason'] == 'red':
+        return f"красная карточка в матче {state['match_title']}"
+    return f"{limit}-я жёлтая в матче {state['match_title']}"
+
+
+def tournament_discipline(tournament, before_match=None):
+    """Карточки и дисквалификации игроков турнира.
+
+    Правило: красная карточка или N-я жёлтая (N из настроек, по умолчанию 3) —
+    игрок до конца турнира не играет, команда заявляет замену. С before_match
+    считаются только матчи, сыгранные раньше него: так протокол старого матча
+    можно править, даже если игрока дисквалифицировали позже.
+    """
+    limit = tournament_rules(tournament)['yellow_limit']
+    matches = {m.id: m for m in TournamentMatch.query.filter_by(tournament_id=tournament.id).all()}
+    if not matches:
+        return {}
+    cutoff = match_sequence_key(before_match) if before_match else None
+    events = TournamentMatchEvent.query.filter(
+        TournamentMatchEvent.match_id.in_(list(matches.keys())),
+        TournamentMatchEvent.kind == TournamentMatchEvent.KIND_CARD,
+        TournamentMatchEvent.member_id.isnot(None)).all()
+    events.sort(key=lambda e: (match_sequence_key(matches[e.match_id]), e.minute is None, e.minute or 0, e.id))
+    states = {}
+    for event in events:
+        match = matches[event.match_id]
+        if cutoff is not None and (match.id == before_match.id or match_sequence_key(match) >= cutoff):
+            continue
+        state = states.setdefault(event.member_id, {
+            'yellow': 0, 'red': 0, 'disqualified': False, 'reason': None,
+            'match_id': None, 'match_title': '', 'entry_id': event.entry_id,
+        })
+        if event.card == TournamentMatchEvent.CARD_RED:
+            state['red'] += 1
+            trigger = 'red'
+        else:
+            state['yellow'] += 1
+            trigger = 'yellows' if state['yellow'] >= limit else None
+        if trigger and not state['disqualified']:
+            state.update(disqualified=True, reason=trigger, match_id=match.id,
+                         match_title=match_short_title(match))
+    for state in states.values():
+        state['reason_text'] = discipline_reason_text(state, limit)
+    return states
+
+
+def replacement_rows(tournament_id):
+    """Кто кого заменяет: {id дисквалифицированного: строка заявки замены}."""
+    return {row.replaces_member_id: row for row in TournamentEntryPlayer.query.filter(
+        TournamentEntryPlayer.tournament_id == tournament_id,
+        TournamentEntryPlayer.replaces_member_id.isnot(None),
+        TournamentEntryPlayer.entry_id.isnot(None)).all()}
+
+
 def serialize_roster(tournament, team):
     rules = tournament_rules(tournament)
     entries = TournamentEntry.query.filter_by(tournament_id=tournament.id, team_id=team.id).all()
@@ -6211,6 +6349,8 @@ def serialize_roster(tournament, team):
         TournamentEntryPlayer.tournament_id == tournament.id,
         TournamentEntryPlayer.member_id.in_([m.id for m in team.members] or [0]),
     ).all()}
+    discipline = tournament_discipline(tournament)
+    replacements = replacement_rows(tournament.id)
     players = []
     for member in sorted(team.members, key=lambda m: (m.last_name or '', m.first_name or '')):
         year = member_birth_year(member)
@@ -6230,10 +6370,19 @@ def serialize_roster(tournament, team):
             elif spans:
                 issue = 'too_young'
         card = member_card(member)
+        state = discipline.get(member.id)
+        replacement = replacements.get(member.id)
         players.append({
             **card,
             'birth_year': year,
             'entry_id': entry_id,
+            'yellow': state['yellow'] if state else 0,
+            'red': state['red'] if state else 0,
+            'disqualified': bool(state and state['disqualified']),
+            'disqualified_reason': state['reason_text'] if state else '',
+            'replaced_by': replacement.member.full_name if replacement and replacement.member else None,
+            'replaces_id': row.replaces_member_id if row else None,
+            'replaces_name': row.replaces_member.full_name if row and row.replaces_member else None,
             'is_auto': bool(row and row.is_auto),
             'eligible': eligible,
             # Уже стоит туда, куда по правилам нельзя (например, выключили «младших за старших»).
@@ -6282,6 +6431,7 @@ def tournament_roster_move_api(tournament_id):
     try:
         member_id = int(data.get('member_id'))
         entry_id = int(data['entry_id']) if data.get('entry_id') else None
+        replaces_id = int(data['replaces_member_id']) if data.get('replaces_member_id') else None
     except (TypeError, ValueError, KeyError):
         return jsonify({'success': False, 'message': 'Некорректные данные'}), 400
     member = db.session.get(TournamentTeamMember, member_id)
@@ -6320,10 +6470,42 @@ def tournament_roster_move_api(tournament_id):
                         f'{played_entry.age_group if played_entry else "другую категорию"} — '
                         'перенести его нельзя.'}), 409
 
+    discipline = tournament_discipline(tournament)
+    if (discipline.get(member.id) or {}).get('disqualified') and entry_id:
+        current = TournamentEntryPlayer.query.filter_by(tournament_id=tournament.id, member_id=member.id).first()
+        if not current or current.entry_id != entry_id:
+            return jsonify({'success': False, 'message':
+                            f'{member.full_name} дисквалифицирован до конца турнира '
+                            f"({discipline[member.id]['reason_text']}) — заявить его нельзя."}), 409
+    if replaces_id:
+        replaced = db.session.get(TournamentTeamMember, replaces_id)
+        replaced_row = TournamentEntryPlayer.query.filter_by(
+            tournament_id=tournament.id, member_id=replaces_id).first()
+        replaced_entry = replaced_row.entry_id if replaced_row else (
+            (discipline.get(replaces_id) or {}).get('entry_id'))
+        if not replaced or not (discipline.get(replaces_id) or {}).get('disqualified'):
+            return jsonify({'success': False, 'message': 'Заменить можно только дисквалифицированного игрока'}), 400
+        if not entry or replaced_entry != entry.id:
+            return jsonify({'success': False, 'message':
+                            'Замена должна играть в той же категории, что и дисквалифицированный игрок'}), 400
+        taken = TournamentEntryPlayer.query.filter(
+            TournamentEntryPlayer.tournament_id == tournament.id,
+            TournamentEntryPlayer.replaces_member_id == replaces_id,
+            TournamentEntryPlayer.member_id != member.id,
+            TournamentEntryPlayer.entry_id.isnot(None)).first()
+        if taken:
+            return jsonify({'success': False, 'message':
+                            f'У {replaced.full_name} уже есть замена — {taken.member.full_name}'}), 409
+
     row = TournamentEntryPlayer.query.filter_by(tournament_id=tournament.id, member_id=member.id).first()
     if not row:
         row = TournamentEntryPlayer(tournament_id=tournament.id, member_id=member.id)
         db.session.add(row)
+    if replaces_id:
+        row.replaces_member_id = replaces_id
+    elif row.entry_id != (entry.id if entry else None):
+        # Перенесли в другую категорию или сняли — это уже не замена.
+        row.replaces_member_id = None
     row.entry_id = entry.id if entry else None
     row.is_auto = False
     db.session.commit()
@@ -7766,10 +7948,22 @@ def serialize_protocol(match):
     events = TournamentMatchEvent.query.filter_by(match_id=match.id).order_by(
         TournamentMatchEvent.minute.is_(None), TournamentMatchEvent.minute, TournamentMatchEvent.id).all()
 
+    tournament = db.session.get(Tournament, match.tournament_id)
+    limit = tournament_rules(tournament)['yellow_limit']
+    # Что было с игроками до этого матча: дисквалифицированных в состав не поставить.
+    before = tournament_discipline(tournament, before_match=match)
+
+    def squad_card(member):
+        state = before.get(member.id) or {}
+        return {**member_card(member),
+                'yellow_before': state.get('yellow', 0),
+                'disqualified': bool(state.get('disqualified')),
+                'disqualified_reason': state.get('reason_text', '')}
+
     def team_block(entry):
         if not entry or not entry.team:
             return None
-        squad = [member_card(m) for m in entry_squad(entry)]
+        squad = [squad_card(m) for m in entry_squad(entry)]
         mine = [a for a in appearances if a.entry_id == entry.id]
         return {
             'entry_id': entry.id,
@@ -7786,6 +7980,7 @@ def serialize_protocol(match):
 
     return {
         'match_id': match.id,
+        'yellow_limit': limit,
         'home_score': match.home_score,
         'away_score': match.away_score,
         'home': team_block(match.home_entry),
@@ -7972,6 +8167,16 @@ def tournament_match_protocol_api(match_id):
 
     lineups = data.get('lineups') or {}
     events = data.get('events') or []
+    tournament = db.session.get(Tournament, match.tournament_id)
+    before = tournament_discipline(tournament, before_match=match)
+
+    def check_eligible(member_id):
+        state = before.get(member_id)
+        if state and state['disqualified']:
+            member = db.session.get(TournamentTeamMember, member_id)
+            raise ValueError(f"{member.full_name if member else 'Игрок'} дисквалифицирован "
+                             f"({state['reason_text']}) и не может играть до конца турнира. "
+                             'Заявите замену в окне «Состав».')
 
     try:
         goal_count = {'home': 0, 'away': 0}
@@ -8008,6 +8213,7 @@ def tournament_match_protocol_api(match_id):
                 seen.add(member_id)
                 if member_id not in allowed[side]:
                     raise ValueError('Игрок не из состава этой команды')
+                check_eligible(member_id)
                 is_keeper = bool(row.get('is_goalkeeper'))
                 keepers += 1 if is_keeper else 0
                 db.session.add(TournamentMatchAppearance(
@@ -8037,6 +8243,10 @@ def tournament_match_protocol_api(match_id):
             other = 'away' if side == 'home' else 'home'
             if member_id and member_id not in allowed[other if own_goal else side]:
                 raise ValueError('Автор события не из состава своей команды')
+            if member_id:
+                check_eligible(member_id)
+            if assist_id:
+                check_eligible(assist_id)
             # У автогола ассистента не бывает.
             if own_goal or kind != TournamentMatchEvent.KIND_GOAL:
                 assist_id = None
@@ -8064,7 +8274,22 @@ def tournament_match_protocol_api(match_id):
         return jsonify({'success': False, 'message': message}), 400
 
     db.session.commit()
-    return jsonify({'success': True, 'protocol': serialize_protocol(match)})
+    # Кто дисквалифицирован именно этим матчем — тренеру нужно заявить замену.
+    after = tournament_discipline(tournament)
+    notices = []
+    for member_id, state in after.items():
+        if state['disqualified'] and state['match_id'] == match.id:
+            member = db.session.get(TournamentTeamMember, member_id)
+            notices.append(f"{member.full_name if member else 'Игрок'}: {state['reason_text']} — "
+                           'дисквалифицирован до конца турнира. Заявите замену в окне «Состав».')
+            later = [m for m in TournamentMatch.query.filter_by(tournament_id=tournament.id).all()
+                     if match_sequence_key(m) > match_sequence_key(match)
+                     and TournamentMatchAppearance.query.filter_by(match_id=m.id, member_id=member_id).first()]
+            if later:
+                notices.append('Он уже записан в составе позже: '
+                               + ', '.join(match_short_title(m) for m in later)
+                               + ' — уберите его из этих протоколов.')
+    return jsonify({'success': True, 'protocol': serialize_protocol(match), 'notices': notices})
 
 
 def collect_player_stats(tournament, age_group):
@@ -8295,9 +8520,43 @@ def tournament_players_api(tournament_id):
         'success': True,
         'age_group': age_group,
         'stats': stats,
+        'yellow_limit': tournament_rules(tournament)['yellow_limit'],
+        'discipline': discipline_rows(tournament, age_group),
         'leaders': {kind: leader_rows(stats, kind, 10) for kind in LEADER_KINDS},
         'awards': serialize_awards(tournament, age_group, stats),
     })
+
+
+def discipline_rows(tournament, age_group):
+    """Дисквалифицированные и «на грани» (до лимита осталась одна жёлтая) в категории."""
+    limit = tournament_rules(tournament)['yellow_limit']
+    entries = {e.id: e for e in TournamentEntry.query.filter_by(
+        tournament_id=tournament.id, age_group=age_group).all()}
+    replacements = replacement_rows(tournament.id)
+    rows = []
+    for member_id, state in tournament_discipline(tournament).items():
+        entry = entries.get(state['entry_id'])
+        if not entry:
+            continue
+        at_risk = not state['disqualified'] and state['yellow'] == limit - 1
+        if not state['disqualified'] and not at_risk:
+            continue
+        member = db.session.get(TournamentTeamMember, member_id)
+        replacement = replacements.get(member_id)
+        rows.append({
+            'member_id': member_id,
+            'name': member.full_name if member else '—',
+            'team_id': entry.team_id,
+            'team_name': entry.team.name if entry.team else '—',
+            'yellow': state['yellow'],
+            'red': state['red'],
+            'disqualified': state['disqualified'],
+            'at_risk': at_risk,
+            'reason': state['reason_text'],
+            'replaced_by': replacement.member.full_name if replacement and replacement.member else None,
+        })
+    rows.sort(key=lambda r: (not r['disqualified'], r['team_name'], r['name']))
+    return rows
 
 
 # ===== ЛИДЕРЫ: бомбардиры, ассистенты, гол+пас =====
