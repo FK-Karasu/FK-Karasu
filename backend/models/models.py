@@ -806,6 +806,7 @@ class TournamentTeamMember(db.Model):
     phone_secondary = db.Column(db.String(50), nullable=True)
     team_number = db.Column(db.String(30), nullable=True)
     position = db.Column(db.String(50), nullable=True)
+    nationality = db.Column(db.String(30), nullable=True)
     created_at = db.Column(db.DateTime, default=get_local_datetime)
     updated_at = db.Column(db.DateTime, default=get_local_datetime, onupdate=get_local_datetime)
 

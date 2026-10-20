@@ -18666,3 +18666,80 @@ table.stat-table tr.stat-muted td { opacity: .5; }
 #tournamentEntriesModal #entriesList .catalog-data-table th:nth-child(3) { width: 120px; }
 #tournamentEntriesModal #entriesList .catalog-data-table th:last-child { width: 210px; }
 #tournamentEntriesModal #entriesList td.team-member-actions { width: auto; text-align: right; }
+
+/* Окна состава команды и участника: глобальное .modal-content { overflow: hidden !important }
+   обрезало список игроков — возвращаем прокрутку внутри окна. */
+#teamDetailsModal .modal-content,
+#memberModal .modal-content {
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+}
+
+/* Национальность участника: флаг + подпись. */
+.member-nationality-field {
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.member-nationality-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.member-nationality-option {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 38px;
+    padding: 0 12px;
+    border: 1px solid #dfe1e5;
+    border-radius: 11px;
+    background: #fff;
+    color: #444a54;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color .15s ease, background-color .15s ease;
+}
+
+.member-nationality-option input[type="radio"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    min-height: 0;
+    padding: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.member-nationality-option:hover {
+    border-color: #ffc58c;
+}
+
+.member-nationality-option:has(input:checked) {
+    border-color: #ff9b38;
+    background: #fff3e5;
+    color: #d86600;
+}
+
+.member-nationality-option:has(input:focus-visible) {
+    outline: 2px solid #ff9b38;
+    outline-offset: 2px;
+}
+
+.nationality-flag {
+    flex: 0 0 auto;
+    width: 21px;
+    height: 14px;
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px rgba(16, 18, 22, .12);
+}
+
+.team-member-nationality {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    white-space: nowrap;
+}

@@ -1749,6 +1749,8 @@ def ensure_tournament_tables():
                 pending.append(('tournament_stadiums', column_name, column_type))
         if 'position' not in member_columns:
             pending.append(('tournament_team_members', 'position', 'VARCHAR(50)'))
+        if 'nationality' not in member_columns:
+            pending.append(('tournament_team_members', 'nationality', 'VARCHAR(30)'))
         if 'group_id' not in entry_columns:
             pending.append(('tournament_entries', 'group_id', 'INTEGER'))
         if 'group_slot' not in entry_columns:
@@ -5363,6 +5365,14 @@ def normalize_player_position(value):
     return label if label in PLAYER_POSITIONS else None
 
 
+PLAYER_NATIONALITIES = ('Русский', 'Узбек', 'Казах', 'Киргиз', 'Таджик', 'Туркмен')
+
+
+def normalize_player_nationality(value):
+    label = (value or '').strip()
+    return label if label in PLAYER_NATIONALITIES else None
+
+
 def serialize_tournament_team_member(member):
     return {
         'id': member.id,
@@ -5379,6 +5389,7 @@ def serialize_tournament_team_member(member):
         'phone_secondary': member.phone_secondary,
         'team_number': member.team_number,
         'position': member.position,
+        'nationality': member.nationality,
         'created_at': member.created_at.isoformat() if member.created_at else None,
     }
 
@@ -5426,10 +5437,14 @@ def apply_tournament_member_form(member):
     member.birth_date = parse_date_value(request.form.get('birth_date'))
     member.passport_series = (request.form.get('passport_series') or '').strip() or None
     member.address = (request.form.get('address') or '').strip() or None
-    member.phone_primary = (request.form.get('phone_primary') or '').strip() or None
-    member.phone_secondary = (request.form.get('phone_secondary') or '').strip() or None
+    # Телефоны из формы администратора убраны: не затираем уже сохранённые.
+    if 'phone_primary' in request.form:
+        member.phone_primary = (request.form.get('phone_primary') or '').strip() or None
+    if 'phone_secondary' in request.form:
+        member.phone_secondary = (request.form.get('phone_secondary') or '').strip() or None
     member.team_number = (request.form.get('team_number') or '').strip() or None
     member.position = normalize_player_position(request.form.get('position'))
+    member.nationality = normalize_player_nationality(request.form.get('nationality'))
 
 
 @app.route('/tournaments')

@@ -132,6 +132,45 @@ function tournamentDates(item) {
     return item.start_date === item.end_date ? start : `${start} — ${end}`;
 }
 
+// Флаги рисуем SVG: эмодзи-флаги Windows не показывает.
+const NATIONALITY_FLAGS = {
+    'Русский': '<rect width="30" height="20" fill="#fff"/><rect y="6.67" width="30" height="6.67" fill="#0039a6"/><rect y="13.33" width="30" height="6.67" fill="#d52b1e"/>',
+    'Узбек': '<rect width="30" height="20" fill="#1eb53a"/><rect width="30" height="13.2" fill="#ce1126"/><rect width="30" height="12.4" fill="#fff"/><rect width="30" height="7.6" fill="#ce1126"/><rect width="30" height="6.8" fill="#0099b5"/><circle cx="5.2" cy="3.4" r="2.4" fill="#fff"/><circle cx="6.1" cy="3.4" r="2.1" fill="#0099b5"/><circle cx="9.5" cy="2.2" r=".45" fill="#fff"/><circle cx="11" cy="2.2" r=".45" fill="#fff"/><circle cx="12.5" cy="2.2" r=".45" fill="#fff"/><circle cx="11" cy="4.4" r=".45" fill="#fff"/><circle cx="12.5" cy="4.4" r=".45" fill="#fff"/>',
+    'Казах': '<rect width="30" height="20" fill="#00afca"/><path d="M1.5 1.5v17" stroke="#fec50c" stroke-width="1.4" stroke-dasharray="1.4 .9"/><g stroke="#fec50c" stroke-width=".7"><path d="M15 3.2v13.6M8.2 10h13.6M10.2 5.2l9.6 9.6M19.8 5.2l-9.6 9.6"/></g><circle cx="15" cy="10" r="3.4" fill="#fec50c"/><circle cx="15" cy="10" r="2.6" fill="#00afca"/><circle cx="15" cy="10" r="2" fill="#fec50c"/>',
+    'Киргиз': '<rect width="30" height="20" fill="#e8112d"/><g stroke="#ffef00" stroke-width=".9"><path d="M15 3.4v13.2M8.4 10h13.2M10.3 5.3l9.4 9.4M19.7 5.3l-9.4 9.4"/></g><circle cx="15" cy="10" r="4" fill="#ffef00"/><circle cx="15" cy="10" r="2.5" fill="#e8112d"/><path d="M12.8 10.6h4.4M13.2 9.4h3.6" stroke="#ffef00" stroke-width=".5"/>',
+    'Таджик': '<rect width="30" height="20" fill="#fff"/><rect width="30" height="5.7" fill="#cc0000"/><rect y="14.3" width="30" height="5.7" fill="#006600"/><path d="M13 11.4h4l.4-2.2-1 .8-1.4-1.6-1.4 1.6-1-.8z" fill="#f8c300"/><g fill="#f8c300"><circle cx="11.6" cy="9.6" r=".35"/><circle cx="12.2" cy="8.2" r=".35"/><circle cx="13.6" cy="7.3" r=".35"/><circle cx="15" cy="7" r=".35"/><circle cx="16.4" cy="7.3" r=".35"/><circle cx="17.8" cy="8.2" r=".35"/><circle cx="18.4" cy="9.6" r=".35"/></g>',
+    'Туркмен': '<rect width="30" height="20" fill="#00843d"/><rect x="3.6" width="4.6" height="20" fill="#d22630"/><path d="M3.6 0v20M8.2 0v20" stroke="#fec50c" stroke-width=".3"/><g fill="#fec50c"><path d="M5.9 2.2l1.2 1.4-1.2 1.4-1.2-1.4zM5.9 7.2l1.2 1.4-1.2 1.4-1.2-1.4zM5.9 12.2l1.2 1.4-1.2 1.4-1.2-1.4zM5.9 17.2l.9 1-.9 1-.9-1z"/></g><circle cx="13.6" cy="5" r="2.6" fill="#fff"/><circle cx="14.6" cy="4.6" r="2.4" fill="#00843d"/><g fill="#fff"><circle cx="15.6" cy="2.4" r=".4"/><circle cx="17" cy="3.2" r=".4"/><circle cx="17.4" cy="4.8" r=".4"/><circle cx="16.8" cy="6.3" r=".4"/><circle cx="15.5" cy="7" r=".4"/></g>',
+};
+const NATIONALITIES = Object.keys(NATIONALITY_FLAGS);
+
+function nationalityFlag(label) {
+    const flag = NATIONALITY_FLAGS[label];
+    return flag
+        ? `<svg class="nationality-flag" viewBox="0 0 30 20" aria-hidden="true">${flag}</svg>`
+        : '';
+}
+
+function renderNationalityOptions() {
+    byId('memberNationalityOptions').innerHTML = [
+        `<label class="member-nationality-option">
+            <input type="radio" name="memberNationality" value="" checked>
+            <span>Не указана</span>
+        </label>`,
+        ...NATIONALITIES.map((label) => `
+            <label class="member-nationality-option">
+                <input type="radio" name="memberNationality" value="${escapeHtml(label)}">
+                ${nationalityFlag(label)}
+                <span>${escapeHtml(label)}</span>
+            </label>`),
+    ].join('');
+}
+
+function setMemberNationality(value) {
+    document.querySelectorAll('input[name="memberNationality"]').forEach((input) => {
+        input.checked = input.value === (NATIONALITIES.includes(value) ? value : '');
+    });
+}
+
 function initials(name) {
     return String(name || '?')
         .split(/\s+/)
@@ -869,11 +908,10 @@ function renderTeamDetails(team) {
                 </td>
                 <td data-label="Дата рождения">${escapeHtml(formatBirthDate(member.birth_date))}</td>
                 <td data-label="Паспорт">${escapeHtml(member.passport_series || '—')}</td>
-                <td data-label="Телефоны">
-                    <div class="team-member-phones">
-                        <span>${escapeHtml(member.phone_primary || '—')}</span>
-                        ${member.phone_secondary ? `<small>${escapeHtml(member.phone_secondary)}</small>` : ''}
-                    </div>
+                <td data-label="Национальность">
+                    ${member.nationality
+                        ? `<span class="team-member-nationality">${nationalityFlag(member.nationality)}${escapeHtml(member.nationality)}</span>`
+                        : '—'}
                 </td>
                 <td data-label="Позиция">${escapeHtml(member.position || '—')}</td>
                 <td data-label="Номер"><span class="team-number-badge">${escapeHtml(member.team_number || '—')}</span></td>
@@ -941,10 +979,9 @@ async function openMemberEditor(id) {
     byId('memberBirthDate').value = isoToDisplayDate(member.birth_date);
     byId('memberPassportSeries').value = member.passport_series || '';
     byId('memberAddress').value = member.address || '';
-    byId('memberPhonePrimary').value = member.phone_primary || '';
-    byId('memberPhoneSecondary').value = member.phone_secondary || '';
     byId('memberTeamNumber').value = member.team_number || '';
     byId('memberPosition').value = member.position || '';
+    setMemberNationality(member.nationality);
     setPhotoPreview(
         'memberPhotoPreview',
         'memberPhotoFileName',
@@ -966,10 +1003,9 @@ async function saveMember(event) {
     formData.append('birth_date', byId('memberBirthDate').value);
     formData.append('passport_series', byId('memberPassportSeries').value);
     formData.append('address', byId('memberAddress').value);
-    formData.append('phone_primary', byId('memberPhonePrimary').value);
-    formData.append('phone_secondary', byId('memberPhoneSecondary').value);
     formData.append('team_number', byId('memberTeamNumber').value);
     formData.append('position', byId('memberPosition').value);
+    formData.append('nationality', document.querySelector('input[name="memberNationality"]:checked')?.value || '');
     const photo = byId('memberPhoto').files[0];
     if (photo) formData.append('photo', photo);
     const editingId = catalogState.editingMemberId;
@@ -3253,6 +3289,7 @@ function bindEvents() {
     });
     byId('tournamentForm').addEventListener('submit', saveTournament);
     byId('teamForm').addEventListener('submit', saveTeam);
+    renderNationalityOptions();
     byId('memberForm').addEventListener('submit', saveMember);
     byId('stadiumForm').addEventListener('submit', saveStadium);
     document.querySelectorAll('[data-entry-tab]').forEach((button) => {

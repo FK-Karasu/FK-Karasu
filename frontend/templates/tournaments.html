@@ -669,7 +669,7 @@
                                 <th>Участник</th>
                                 <th>Дата рождения</th>
                                 <th>Паспорт</th>
-                                <th>Телефоны</th>
+                                <th>Национальность</th>
                                 <th>Позиция</th>
                                 <th>№</th>
                                 <th></th>
@@ -730,14 +730,6 @@
                     <input id="memberAddress" type="text" maxlength="500" placeholder="Город, улица, дом">
                 </label>
                 <label class="tournament-catalog-field">
-                    <span>Номер телефона 1</span>
-                    <input id="memberPhonePrimary" type="tel" maxlength="50" placeholder="+998">
-                </label>
-                <label class="tournament-catalog-field">
-                    <span>Номер телефона 2</span>
-                    <input id="memberPhoneSecondary" type="tel" maxlength="50" placeholder="+998">
-                </label>
-                <label class="tournament-catalog-field">
                     <span>Номер в команде</span>
                     <input id="memberTeamNumber" type="text" maxlength="30" inputmode="numeric" placeholder="10">
                 </label>
@@ -751,6 +743,10 @@
                         <option value="Нападающий">Нападающий</option>
                     </select>
                 </label>
+                <fieldset class="tournament-catalog-field full member-nationality-field">
+                    <span>Национальность</span>
+                    <div class="member-nationality-options" id="memberNationalityOptions"></div>
+                </fieldset>
                 <div class="tournament-catalog-form-error" id="memberFormError" hidden></div>
                 <footer class="tournament-catalog-form-actions full">
                     <button class="btn-secondary" type="button" data-close-modal="memberModal">Отмена</button>
