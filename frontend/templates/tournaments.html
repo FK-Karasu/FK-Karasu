@@ -8,7 +8,7 @@
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026102301">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026102302">
 </head>
 <body>
     {% include '_sidebar.html' %}
@@ -695,7 +695,7 @@
                 </button>
             </header>
             <form id="memberForm" class="tournament-catalog-form" enctype="multipart/form-data">
-                <label class="team-catalog-logo-picker full">
+                <label class="team-catalog-logo-picker full" for="memberPhoto">
                     <span class="team-catalog-logo-preview round" id="memberPhotoPreview">
                         <i data-lucide="user-round-plus"></i>
                     </span>
@@ -976,7 +976,7 @@
     <script src="{{ url_for('static', filename='js/sidebar.js') }}?v=2026080801"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/photo_cropper.js') }}?v=2026102301"></script>
-    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026102301"></script>
+    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026102302"></script>
     <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026102301"></script>
     <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101704"></script>
 </body>
