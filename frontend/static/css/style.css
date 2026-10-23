@@ -18743,3 +18743,68 @@ table.stat-table tr.stat-muted td { opacity: .5; }
     gap: 7px;
     white-space: nowrap;
 }
+
+/* Быстрое окно счёта: ассистент под автором гола. */
+#scorePopover .sp-goal .sp-goal-assist {
+    grid-column: 2 / -1;
+    height: 30px !important;
+    color: #5f6673;
+    font-size: 12px;
+}
+
+#scorePopover .sp-goal .sp-goal-assist[hidden] { display: none !important; }
+
+/* Все окна турниров прокручиваются внутри: глобальное
+   .modal-content { overflow: hidden !important } обрезало длинные составы. */
+body .tournament-catalog-modal .modal-content {
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+}
+
+/* Фото участников крупнее: лицо видно и в составе, и в заявке. */
+.team-catalog-logo-preview.round {
+    width: 84px;
+    height: 84px;
+}
+
+.team-catalog-logo-preview.round img {
+    padding: 0;
+    object-fit: cover;
+}
+
+.team-member-avatar {
+    flex: 0 0 52px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+}
+
+.roster-face {
+    width: 44px;
+    height: 44px;
+}
+
+.roster-player {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+}
+
+.member-photo-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.member-photo-buttons > button[hidden] { display: none; }
+
+@media (max-width: 680px) {
+    .member-photo-buttons {
+        grid-column: 1 / -1;
+        justify-content: stretch;
+    }
+
+    .member-photo-buttons > * {
+        flex: 1;
+        text-align: center;
+    }
+}

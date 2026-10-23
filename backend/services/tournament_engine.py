@@ -39,6 +39,7 @@ DEFAULT_SETTINGS = {
 }
 
 MAX_GROUPS = 16
+MAX_LEGS = 3
 
 
 def normalize_settings(raw):
@@ -59,7 +60,7 @@ def normalize_settings(raw):
 
     number('groups', 1, MAX_GROUPS)
     number('advance', 1, 4)
-    number('legs', 1, 2)
+    number('legs', 1, MAX_LEGS)
     number('win_points', 1, 5)
     number('draw_points', 0, 3)
     if 'third_place' in raw:
@@ -157,8 +158,7 @@ def describe_plan(team_count, settings):
     qualified = 0
     if s['format'] == FORMAT_LEAGUE:
         group_matches = round_robin_match_count(team_count, s['legs'])
-        legs = 'в два круга (дома и в гостях)' if s['legs'] == 2 else 'в один круг'
-        steps.append(f'{team_count} команд играют каждый с каждым {legs}')
+        steps.append(f'{team_count} команд играют каждый с каждым {legs_title(s["legs"])}')
         steps.append('Победитель — первое место в таблице')
     elif s['format'] == FORMAT_GROUPS_PLAYOFF:
         groups = min(s['groups'], team_count // 2) or 1
@@ -168,7 +168,7 @@ def describe_plan(team_count, settings):
         group_matches = sum(round_robin_match_count(size, s['legs']) for size in sizes)
         word = 'команды' if 2 <= max(sizes) % 10 <= 4 and not 12 <= max(sizes) % 100 <= 14 else 'команд'
         span = str(sizes[0]) if len(set(sizes)) == 1 else f'{min(sizes)}–{max(sizes)}'
-        steps.append(f'{groups} гр. по {span} {word} — каждый с каждым')
+        steps.append(f'{groups} гр. по {span} {word} — каждый с каждым {legs_title(s["legs"])}')
         advance = min(s['advance'], min(sizes) - 1) if min(sizes) > 1 else 1
         if advance != s['advance']:
             warnings.append(f'Из группы на {min(sizes)} команды выходят не больше {advance}')
@@ -280,9 +280,15 @@ def round_robin_rounds(items, legs=1):
         rounds.append(pairs)
         players = [players[0]] + [players[-1]] + players[1:-1]
 
-    if legs == 2:
-        rounds += [[(away, home) for home, away in pairs] for pairs in rounds[:]]
+    # Каждый следующий круг — те же пары, хозяева меняются местами через круг.
+    first = rounds[:]
+    for leg in range(1, max(1, legs)):
+        rounds += first if leg % 2 == 0 else [[(away, home) for home, away in pairs] for pairs in first]
     return rounds
+
+
+def legs_title(legs):
+    return {1: 'в один круг', 2: 'в два круга (дома и в гостях)', 3: 'в три круга'}.get(legs, 'в один круг')
 
 
 # ===== ТУРНИРНАЯ ТАБЛИЦА =====

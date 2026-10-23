@@ -940,12 +940,39 @@ async function openTeamDetails(id) {
     openModal('teamDetailsModal');
 }
 
+function memberPhotoSavedUrl() {
+    return catalogState.editingMemberId ? activeTeamMember(catalogState.editingMemberId)?.photo_url || '' : '';
+}
+
+function showMemberPhoto(file) {
+    releaseObjectUrl('memberPhotoObjectUrl');
+    const saved = memberPhotoSavedUrl();
+    if (file) catalogState.memberPhotoObjectUrl = URL.createObjectURL(file);
+    setPhotoPreview(
+        'memberPhotoPreview',
+        'memberPhotoFileName',
+        file ? catalogState.memberPhotoObjectUrl : saved,
+        'user-round-plus',
+        file ? 'Новое фото · кадр выбран' : (saved ? 'Текущее фото участника' : 'PNG, JPG или WEBP'),
+    );
+    byId('memberPhotoRecrop').hidden = !file && !saved;
+}
+
+// Выбранный файл (или уже сохранённое фото) — в окно кадра; в форму уходит готовый квадрат.
+// «Отмена» возвращает то, что было до этого: для только что выбранного файла — ничего.
+async function cropMemberPhoto(source, { fresh = false } = {}) {
+    const input = byId('memberPhoto');
+    const before = fresh ? null : input.files[0] || null;
+    const cropped = await window.PhotoCropper.crop(source);
+    window.PhotoCropper.replaceInputFile(input, cropped || before);
+    showMemberPhoto(input.files[0] || null);
+}
+
 function resetMemberForm() {
     catalogState.editingMemberId = null;
     byId('memberForm').reset();
     byId('memberModalTitle').textContent = 'Новый участник';
-    releaseObjectUrl('memberPhotoObjectUrl');
-    setPhotoPreview('memberPhotoPreview', 'memberPhotoFileName', '', 'user-round-plus');
+    showMemberPhoto(null);
     showFormError('memberFormError');
 }
 
@@ -982,13 +1009,8 @@ async function openMemberEditor(id) {
     byId('memberTeamNumber').value = member.team_number || '';
     byId('memberPosition').value = member.position || '';
     setMemberNationality(member.nationality);
-    setPhotoPreview(
-        'memberPhotoPreview',
-        'memberPhotoFileName',
-        member.photo_url || '',
-        'user-round-plus',
-        member.photo_url ? 'Текущее фото участника' : 'PNG, JPG или WEBP',
-    );
+    byId('memberPhoto').value = '';
+    showMemberPhoto(null);
     showFormError('memberFormError');
     openModal('memberModal');
 }
@@ -1655,6 +1677,35 @@ function renderTiebreak() {
     // В олимпийской системе таблиц нет — правило не нужно.
     const knockout = data?.settings?.format === 'knockout';
     byId('boardTiebreak').hidden = knockout || !data?.groups?.length;
+    const legs = data?.settings?.legs || 1;
+    const legsLocked = Boolean(data?.has_results);
+    byId('boardLegs').innerHTML = `
+        <label class="tiebreak-inline" title="Сколько раз команды группы играют друг с другом. Во 2-м круге хозяева меняются местами.">
+            <span>Круги в группе</span>
+            <select data-legs-select ${legsLocked ? 'disabled' : ''} aria-label="Сколько кругов играют в группе">
+                ${[1, 2, 3].map((value) => `<option value="${value}" ${value === legs ? 'selected' : ''}>${
+                    ['', '1 круг', '2 круга', '3 круга'][value]}</option>`).join('')}
+            </select>
+            <i class="tiebreak-help" aria-hidden="true">?</i>
+            ${legsLocked ? '<small>закреплено — матчи идут</small>' : ''}
+        </label>`;
+    byId('boardLegs').hidden = knockout || !data?.groups?.length;
+}
+
+async function setLegs(value) {
+    const data = categoryOverview();
+    if (!data || (data.settings?.legs || 1) === value) return;
+    try {
+        showFormError('boardError');
+        await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/legs`, {
+            method: 'POST',
+            body: JSON.stringify({ age_group: catalogState.age, legs: value }),
+        });
+        await loadCategory();
+    } catch (error) {
+        showFormError('boardError', error.message);
+        renderTiebreak();
+    }
 }
 
 async function setTiebreak(key) {
@@ -3308,6 +3359,8 @@ function bindEvents() {
         if (select) setTiebreak(select.value);
         const limit = event.target.closest('[data-yellow-limit]');
         if (limit) setYellowLimit(Number(limit.value));
+        const legs = event.target.closest('[data-legs-select]');
+        if (legs) setLegs(Number(legs.value));
     });
     byId('runScheduleBtn').addEventListener('click', () => runSchedule().catch(showPageError));
     byId('leadersBoard').addEventListener('click', (event) => {
@@ -3574,21 +3627,18 @@ function bindEvents() {
             file.name,
         );
     });
-    byId('memberPhoto').addEventListener('change', () => {
-        const file = byId('memberPhoto').files[0];
-        releaseObjectUrl('memberPhotoObjectUrl');
-        if (!file) {
-            setPhotoPreview('memberPhotoPreview', 'memberPhotoFileName', '', 'user-round-plus');
-            return;
-        }
-        catalogState.memberPhotoObjectUrl = URL.createObjectURL(file);
-        setPhotoPreview(
-            'memberPhotoPreview',
-            'memberPhotoFileName',
-            catalogState.memberPhotoObjectUrl,
-            'user-round-plus',
-            file.name,
-        );
+    byId('memberPhoto').addEventListener('change', async () => {
+        const input = byId('memberPhoto');
+        const file = input.files[0];
+        if (!file) return;
+        await cropMemberPhoto(file, { fresh: true });
+    });
+    byId('memberPhotoRecrop').addEventListener('click', async (event) => {
+        // Кнопка внутри <label>: без этого откроется ещё и выбор файла.
+        event.preventDefault();
+        event.stopPropagation();
+        const current = byId('memberPhoto').files[0] || memberPhotoSavedUrl();
+        if (current) await cropMemberPhoto(current);
     });
     byId('stadiumPhoto').addEventListener('change', () => {
         const file = byId('stadiumPhoto').files[0];

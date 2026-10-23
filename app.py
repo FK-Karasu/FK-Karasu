@@ -7469,6 +7469,28 @@ def tournament_template_api(tournament_id):
     return jsonify({'success': True, 'groups': len(groups)})
 
 
+@app.route('/api/tournaments/<int:tournament_id>/legs', methods=['POST'])
+@login_required
+def tournament_legs_api(tournament_id):
+    """Сколько кругов играют в группах: 1, 2 или 3. Готовый календарь пересобирается."""
+    ensure_tournament_tables()
+    if not has_tournament_permission('edit'):
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    tournament = Tournament.query.filter_by(id=tournament_id).first_or_404()
+    data = request.get_json() or {}
+    age_group = request_age_group(tournament, data.get('age_group'))
+    if not age_group:
+        return jsonify({'success': False, 'message': 'Выберите возрастную категорию турнира'}), 400
+    if category_has_results(tournament.id, age_group):
+        return jsonify({'success': False, 'message':
+                        'Матчи уже идут — число кругов не поменять. Сначала сбросьте результаты.'}), 409
+    settings = category_settings(tournament, age_group)
+    settings = save_category_settings(tournament, age_group, {**settings, 'legs': data.get('legs')})
+    outcome = refresh_calendar_after_placement(tournament, age_group, settings)
+    db.session.commit()
+    return jsonify({'success': True, 'legs': settings['legs'], **outcome})
+
+
 @app.route('/api/tournaments/<int:tournament_id>/place', methods=['POST'])
 @login_required
 def tournament_place_api(tournament_id):
@@ -9974,7 +9996,6 @@ def public_member_payload(member):
         'birth_date': member.birth_date.isoformat() if member.birth_date else None,
         'team_number': member.team_number,
         'position': member.position,
-        'phone_primary': member.phone_primary,
         'photo_url': get_tournament_media_url(member.photo_path),
     }
 
@@ -10037,7 +10058,8 @@ def apply_public_member_form(member, allowed_birth_years=()):
     member.birth_date = parse_date_value(request.form.get('birth_date'))
     member.team_number = (request.form.get('team_number') or '').strip() or None
     member.position = normalize_player_position(request.form.get('position'))
-    member.phone_primary = (request.form.get('phone_primary') or '').strip() or None
+    if 'phone_primary' in request.form:
+        member.phone_primary = (request.form.get('phone_primary') or '').strip() or None
     if not member.last_name or not member.first_name:
         raise ValueError('Укажите фамилию и имя участника')
     if not member.birth_date:

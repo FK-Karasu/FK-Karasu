@@ -35,7 +35,8 @@
     function templatesFor(count, withPlacement = true) {
         const list = [];
         if (count < 2) return list;
-        const rr = (size) => (size * (size - 1)) / 2;
+        const legs = categoryOverview()?.settings?.legs || 1;
+        const rr = (size) => (size * (size - 1)) / 2 * legs;
         list.push({
             key: 'league',
             settings: { format: 'league', groups: 1 },
@@ -677,8 +678,11 @@
         pop.querySelectorAll('[data-goal-side]').forEach((row) => {
             const goal = board.goals[row.dataset.goalSide]?.[Number(row.dataset.goalIndex)];
             if (!goal) return;
-            goal.member_id = row.querySelector('select').value;
-            goal.minute = row.querySelector('input').value;
+            goal.member_id = row.querySelector('[data-goal-scorer]').value;
+            goal.minute = row.querySelector('[data-goal-minute]').value;
+            const assist = row.querySelector('[data-goal-assist]');
+            goal.assist_member_id = assist && assist.value && goal.member_id !== 'og'
+                && assist.value !== goal.member_id ? Number(assist.value) : null;
         });
     }
 
@@ -721,14 +725,20 @@
                     ${board.goals[side].map((goal, index) => `
                         <div class="sp-goal" data-goal-side="${side}" data-goal-index="${index}">
                             <span class="sp-goal-ball">⚽</span>
-                            <select aria-label="Кто забил">
+                            <select data-goal-scorer aria-label="Кто забил">
                                 <option value="">— кто забил —</option>
                                 ${squad.map((player) => option(player, goal.member_id)).join('')}
                                 <option value="og" ${goal.member_id === 'og' ? 'selected' : ''}>Автогол соперника</option>
                             </select>
-                            <input type="number" min="0" max="200" inputmode="numeric" placeholder="мин"
+                            <input data-goal-minute type="number" min="0" max="200" inputmode="numeric" placeholder="мин"
                                 value="${escapeHtml(String(goal.minute ?? ''))}" aria-label="Минута">
                             <span class="sp-goal-min">′</span>
+                            <select data-goal-assist class="sp-goal-assist" aria-label="Ассистент"
+                                ${goal.member_id === 'og' ? 'hidden' : ''}>
+                                <option value="">ассист: нет</option>
+                                ${squad.filter((player) => String(player.id) !== String(goal.member_id))
+                                    .map((player) => option(player, goal.assist_member_id)).join('')}
+                            </select>
                         </div>`).join('')}
                     ${squad.length ? '' : '<p class="sp-hint">В составе команды нет игроков — добавьте их в карточке команды.</p>'}
                 </div>`;
@@ -1006,6 +1016,11 @@
             if (select) select.dataset.prev = select.value;
         });
         pop.addEventListener('change', (event) => {
+            // Сменили автора гола — список ассистентов без него, у автогола ассиста нет.
+            if (event.target.matches('[data-goal-scorer]')) {
+                renderGoals();
+                return;
+            }
             const select = event.target.closest('[data-pair]');
             if (!select) return;
             const other = pop.querySelector(`[data-pair="${select.dataset.pair === 'home' ? 'away' : 'home'}"]`);

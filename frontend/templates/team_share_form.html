@@ -195,8 +195,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 64px;
-            height: 64px;
+            width: 88px;
+            height: 88px;
             border-radius: 50%;
             background: #f4f1ee center/cover no-repeat;
             color: #9aa1ab;
@@ -215,6 +215,19 @@
         .avatar-copy small {
             color: var(--muted);
             font-size: 12px;
+        }
+
+        .avatar-recrop {
+            margin-top: 6px;
+            padding: 0;
+            min-height: 0;
+            border: 0;
+            background: none;
+            color: var(--accent);
+            font: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
         }
 
         .avatar-clear {
@@ -300,8 +313,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 42px;
-            height: 42px;
+            width: 54px;
+            height: 54px;
             border-radius: 50%;
             background: #f4f1ee center/cover no-repeat;
             color: #9aa1ab;
@@ -456,6 +469,7 @@
                     <span class="avatar-copy">
                         <strong>Фото участника</strong>
                         <small id="avatarHint">Необязательно · нажмите, чтобы выбрать</small>
+                        <button class="avatar-recrop" type="button" id="avatarRecrop" hidden>Изменить кадр</button>
                     </span>
                     <button class="avatar-clear" type="button" id="avatarClear" hidden
                         aria-label="Убрать фото">&times;</button>
@@ -486,16 +500,10 @@
                         {% endfor %}
                     </select>
                 </label>
-                <div class="row">
-                    <label>
-                        <span>Номер <small>необяз.</small></span>
-                        <input name="team_number" maxlength="30" inputmode="numeric" autocomplete="off">
-                    </label>
-                    <label>
-                        <span>Телефон <small>необяз.</small></span>
-                        <input name="phone_primary" type="tel" maxlength="50" placeholder="+998">
-                    </label>
-                </div>
+                <label>
+                    <span>Номер <small>необяз.</small></span>
+                    <input name="team_number" maxlength="30" inputmode="numeric" autocomplete="off">
+                </label>
                 <div class="form-actions" id="formActions">
                     <button class="btn-main" type="submit" id="submitBtn" disabled>Добавить в состав</button>
                     <button class="btn-ghost" type="button" id="cancelEditBtn" hidden>Отмена</button>
@@ -512,6 +520,7 @@
         </div>
     </div>
 
+    <script src="{{ url_for('static', filename='js/photo_cropper.js') }}?v=2026102301"></script>
     <script>
         const TOKEN = {{ share_token | tojson }};
         const API = `/api/team-form/${TOKEN}`;
@@ -558,6 +567,24 @@
             }
             byId('avatarHint').textContent = caption || 'Необязательно · нажмите, чтобы выбрать';
             byId('avatarClear').hidden = !url;
+            byId('avatarRecrop').hidden = !url;
+        }
+
+        // Выбранный файл (или сохранённое фото) — в окно кадра; в форму уходит готовый квадрат.
+        // «Отмена» для только что выбранного файла убирает его, для повторного кадра — оставляет как было.
+        async function cropAvatar(source, fresh) {
+            const before = fresh ? null : form.photo.files[0] || null;
+            const cropped = await window.PhotoCropper.crop(source);
+            window.PhotoCropper.replaceInputFile(form.photo, cropped || before);
+            const file = form.photo.files[0];
+            releaseAvatarUrl();
+            if (file) {
+                state.avatarObjectUrl = URL.createObjectURL(file);
+                setAvatarPreview(state.avatarObjectUrl, 'Новое фото · кадр выбран');
+            } else {
+                setAvatarPreview(state.savedPhotoUrl || '',
+                    state.savedPhotoUrl ? 'Текущее фото · нажмите, чтобы заменить' : '');
+            }
         }
 
         function releaseAvatarUrl() {
@@ -670,6 +697,7 @@
         function resetForm() {
             form.reset();
             releaseAvatarUrl();
+            state.savedPhotoUrl = null;
             setAvatarPreview('');
             state.editingId = null;
             byId('formTitle').textContent = 'Добавить участника';
@@ -690,9 +718,9 @@
             form.birth_date.value = member.birth_date || '';
             form.team_number.value = member.team_number || '';
             form.position.value = member.position || '';
-            form.phone_primary.value = member.phone_primary || '';
             form.photo.value = '';
             releaseAvatarUrl();
+            state.savedPhotoUrl = member.photo_url || null;
             setAvatarPreview(member.photo_url || '',
                 member.photo_url ? 'Текущее фото · нажмите, чтобы заменить' : '');
             refreshSubmitState();
@@ -751,13 +779,15 @@
 
         form.photo.addEventListener('change', () => {
             const file = form.photo.files[0];
-            releaseAvatarUrl();
-            if (!file) {
-                setAvatarPreview('');
-                return;
-            }
-            state.avatarObjectUrl = URL.createObjectURL(file);
-            setAvatarPreview(state.avatarObjectUrl, file.name);
+            if (file) cropAvatar(file, true);
+        });
+
+        byId('avatarRecrop').addEventListener('click', (event) => {
+            // Кнопка внутри <label>: без этого откроется ещё и выбор файла.
+            event.preventDefault();
+            event.stopPropagation();
+            const source = form.photo.files[0] || state.savedPhotoUrl;
+            if (source) cropAvatar(source, false);
         });
 
         byId('avatarClear').addEventListener('click', (event) => {
@@ -766,6 +796,7 @@
             event.stopPropagation();
             form.photo.value = '';
             releaseAvatarUrl();
+            state.savedPhotoUrl = null;
             setAvatarPreview('');
         });
 

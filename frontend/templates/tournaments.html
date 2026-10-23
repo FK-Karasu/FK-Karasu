@@ -8,7 +8,7 @@
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026102101">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026102301">
 </head>
 <body>
     {% include '_sidebar.html' %}
@@ -370,6 +370,7 @@
                     </section>
                     <section class="board-rules" id="boardRules">
                         <div class="tiebreak-block" id="boardTiebreak"><div data-tiebreak-host></div></div>
+                        <div class="tiebreak-block" id="boardLegs"></div>
                         <div class="discipline-rule" id="boardDiscipline"></div>
                         <label class="roster-switch" id="boardPlacementField">
                             <input id="boardPlacementToggle" type="checkbox">
@@ -702,7 +703,10 @@
                         <strong>Фото участника</strong>
                         <small id="memberPhotoFileName">PNG, JPG или WEBP</small>
                     </span>
-                    <span class="btn-secondary">Выбрать файл</span>
+                    <span class="member-photo-buttons">
+                        <button class="btn-secondary" type="button" id="memberPhotoRecrop" hidden>Изменить кадр</button>
+                        <span class="btn-secondary">Выбрать файл</span>
+                    </span>
                     <input id="memberPhoto" type="file" accept="image/png,image/jpeg,image/webp">
                 </label>
                 <label class="tournament-catalog-field">
@@ -971,8 +975,9 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}?v=2026080801"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026102102"></script>
-    <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026101719"></script>
+    <script src="{{ url_for('static', filename='js/photo_cropper.js') }}?v=2026102301"></script>
+    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026102301"></script>
+    <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026102301"></script>
     <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101704"></script>
 </body>
 </html>
