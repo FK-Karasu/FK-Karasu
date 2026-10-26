@@ -751,6 +751,8 @@ class Tournament(db.Model):
     # Формат каждой возрастной категории: JSON {"2015": {"format": "groups_playoff", ...}}.
     # У разных возрастов один турнир может идти по разным схемам.
     formats = db.Column(db.Text, nullable=True)
+    # Символические сборные по категориям: {"2012": {"size": 7, "formation": "2-3-1", "slots": [id, ...]}}
+    dream_teams = db.Column(db.Text, nullable=True)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=get_local_datetime)
     updated_at = db.Column(db.DateTime, default=get_local_datetime, onupdate=get_local_datetime)

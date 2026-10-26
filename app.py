@@ -1737,6 +1737,8 @@ def ensure_tournament_tables():
             pending.append(('tournaments', 'poster_path', 'VARCHAR(300)'))
         if 'formats' not in tournament_columns:
             pending.append(('tournaments', 'formats', 'TEXT'))
+        if 'dream_teams' not in tournament_columns:
+            pending.append(('tournaments', 'dream_teams', 'TEXT'))
         if 'is_published' not in tournament_columns:
             # Уже существующие турниры показываем на сайте, чтобы афиша не была пустой.
             # DEFAULT TRUE, а не 1: в PostgreSQL единица для BOOLEAN недопустима.
@@ -9130,6 +9132,7 @@ POST_TEMPLATES = {
     'standings': 'Таблица группы',
     'results': 'Итоги турнира',
     'award': 'Награда',
+    'dream': 'Символическая сборная',
 }
 POST_ACCENTS = ['#ff9a2b', '#e63946', '#2a9d8f', '#4361ee', '#f4a261', '#111827']
 
@@ -9502,6 +9505,239 @@ def render_award(canvas, params, margin):
         post_center_text(draw, center, y, note, post_font(params['font'], S(32), 450), params['muted'])
 
 
+# ===== СИМВОЛИЧЕСКАЯ СБОРНАЯ =====
+# Схема — линии полевых игроков от защиты к атаке; вратарь всегда один и стоит отдельно.
+
+DREAM_FORMATIONS = {
+    5: ['2-2', '1-2-1', '3-1'],
+    6: ['2-1-2', '3-2', '2-2-1'],
+    7: ['2-3-1', '3-2-1', '3-3'],
+    8: ['2-3-2', '3-3-1', '3-2-2'],
+    9: ['3-3-2', '3-2-3', '4-3-1'],
+    10: ['3-4-2', '4-3-2', '3-3-3'],
+    11: ['4-4-2', '4-3-3', '3-5-2', '4-2-3-1'],
+}
+DREAM_DEFAULT_SIZE = 7
+
+
+def dream_lines(size, formation):
+    """[1, 2, 3, 1] — вратарь и линии. Чужую или битую схему заменяем первой для формата."""
+    options = DREAM_FORMATIONS.get(size) or DREAM_FORMATIONS[DREAM_DEFAULT_SIZE]
+    if formation not in options:
+        formation = options[0]
+    return formation, [1] + [int(part) for part in formation.split('-')]
+
+
+def dream_pool(tournament, age_group):
+    """Игроки категории: составы подтверждённых заявок."""
+    entries = confirmed_entries(tournament.id, age_group) if age_group else [
+        e for e in TournamentEntry.query.filter_by(tournament_id=tournament.id,
+                                                   status=TournamentEntry.STATUS_CONFIRMED).all()]
+    pool = {}
+    for entry in entries:
+        for member in entry_squad(entry):
+            pool.setdefault(member.id, (member, entry.team))
+    return pool
+
+
+def load_dream_teams(tournament):
+    try:
+        data = json.loads(tournament.dream_teams or '{}')
+    except Exception:
+        data = {}
+    return data if isinstance(data, dict) else {}
+
+
+def normalize_dream(raw, pool_ids=None):
+    raw = raw if isinstance(raw, dict) else {}
+    try:
+        size = int(raw.get('size') or DREAM_DEFAULT_SIZE)
+    except (TypeError, ValueError):
+        size = DREAM_DEFAULT_SIZE
+    if size not in DREAM_FORMATIONS:
+        size = DREAM_DEFAULT_SIZE
+    formation, lines = dream_lines(size, raw.get('formation'))
+    slots, seen = [], set()
+    for value in (raw.get('slots') or [])[:size]:
+        try:
+            member_id = int(value) if value else None
+        except (TypeError, ValueError):
+            member_id = None
+        # Один игрок — одна позиция; чужих для категории не берём.
+        if member_id in seen or (member_id and pool_ids is not None and member_id not in pool_ids):
+            member_id = None
+        if member_id:
+            seen.add(member_id)
+        slots.append(member_id)
+    slots += [None] * (size - len(slots))
+    return {'size': size, 'formation': formation, 'slots': slots}
+
+
+def resolve_dream_team(tournament, age_group, draft=None):
+    """Сборная для картинки: черновик из студии или сохранённая."""
+    pool = dream_pool(tournament, age_group)
+    raw = draft if isinstance(draft, dict) else load_dream_teams(tournament).get(age_group or '')
+    dream = normalize_dream(raw, set(pool))
+    _, dream['lines'] = dream_lines(dream['size'], dream['formation'])
+    dream['players'] = [pool.get(member_id) if member_id else None for member_id in dream['slots']]
+    return dream
+
+
+def dream_short_name(member):
+    first = f'{member.first_name[0]}. ' if member.first_name else ''
+    return f'{first}{member.last_name or ""}'.upper().strip()
+
+
+def draw_dream_pitch(canvas, box, scale, horizontal=False):
+    """Поле сверху: атака у верхнего края (или у правого на широком холсте), вратарь у своих ворот."""
+    left, top, right, bottom = box
+    width, height = right - left, bottom - top
+    layer = Image.new('RGBA', canvas.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    radius = int(scale(26))
+    draw.rounded_rectangle(box, radius=radius, fill=(22, 104, 60, 255))
+    stripes = 8
+    for index in range(0, stripes, 2):
+        if horizontal:
+            x0 = left + width * index / stripes
+            draw.rectangle((x0, top, x0 + width / stripes, bottom), fill=(28, 118, 69, 255))
+        else:
+            y0 = top + height * index / stripes
+            draw.rectangle((left, y0, right, y0 + height / stripes), fill=(28, 118, 69, 255))
+    mask = Image.new('L', canvas.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle(box, radius=radius, fill=255)
+    field = Image.new('RGBA', canvas.size, (0, 0, 0, 0))
+    field.paste(layer, (0, 0), mask)
+
+    lines = ImageDraw.Draw(field)
+    line = (255, 255, 255, 120)
+    stroke = max(2, int(scale(3)))
+    pad = scale(18)
+    x1, y1, x2, y2 = left + pad, top + pad, right - pad, bottom - pad
+    lines.rectangle((x1, y1, x2, y2), outline=line, width=stroke)
+    cx, cy = (left + right) / 2, (top + bottom) / 2
+    circle = min(width, height) * 0.13
+    lines.ellipse((cx - circle, cy - circle, cx + circle, cy + circle), outline=line, width=stroke)
+    if horizontal:
+        lines.line((cx, y1, cx, y2), fill=line, width=stroke)
+        box_d, box_s, goal_d, goal_s = width * 0.13, height * 0.5, width * 0.05, height * 0.24
+        for edge, sign in ((x1, 1), (x2, -1)):
+            for depth, span in ((box_d, box_s), (goal_d, goal_s)):
+                far = edge + sign * depth
+                lines.rectangle((min(edge, far), cy - span / 2, max(edge, far), cy + span / 2),
+                                outline=line, width=stroke)
+    else:
+        lines.line((x1, cy, x2, cy), fill=line, width=stroke)
+        box_d, box_s, goal_d, goal_s = height * 0.13, width * 0.5, height * 0.05, width * 0.24
+        for edge, sign in ((y1, 1), (y2, -1)):
+            for depth, span in ((box_d, box_s), (goal_d, goal_s)):
+                far = edge + sign * depth
+                lines.rectangle((cx - span / 2, min(edge, far), cx + span / 2, max(edge, far)),
+                                outline=line, width=stroke)
+    canvas.paste(field, (0, 0), field)
+
+
+def render_dream(canvas, params, margin):
+    draw = ImageDraw.Draw(canvas)
+    S = lambda value: post_scale(params, value)
+    dream = params.get('dream') or resolve_dream_team(params['tournament'], params.get('age_group') or '')
+    font_key = params['font']
+
+    top = params['content_top']
+    title = (params.get('title') or 'Символическая сборная').upper()
+    title_font = fit_text_font(draw, title, canvas.width - margin * 2, S(64), font_key, 800, minimum=S(30))
+    post_center_text(draw, canvas.width // 2, top, title, title_font, params['ink'])
+    y = top + int(title_font.size * 1.2)
+    subtitle = params.get('subtitle')
+    if subtitle is None:
+        subtitle = f"Формат {dream['size']}×{dream['size']} · схема {dream['formation']}"
+    if subtitle:
+        sub_font = post_font(font_key, S(28), 450)
+        post_center_text(draw, canvas.width // 2, y, subtitle, sub_font, params['accent'])
+        y += int(sub_font.size * 1.5)
+
+    bottom = params['content_bottom']
+    pitch_h = bottom - y - S(10)
+    available_w = canvas.width - margin * 2
+    # Широкий холст (Telegram) — поле лёжа: вратарь слева, атака справа.
+    horizontal = available_w > pitch_h * 1.4
+    if horizontal:
+        pitch_w = min(available_w, int(pitch_h * 1.75))
+    else:
+        pitch_w = min(available_w, int(pitch_h * 0.95))
+    left = (canvas.width - pitch_w) // 2
+    box = (left, y + S(10), left + pitch_w, bottom)
+    draw_dream_pitch(canvas, box, S, horizontal)
+    draw = ImageDraw.Draw(canvas)
+
+    rows = dream['lines']
+    widest = max(rows)
+    box_w, box_h = box[2] - box[0], box[3] - box[1]
+    depth = box_w if horizontal else box_h      # вдоль поля: от вратаря к атаке
+    span = box_h if horizontal else box_w       # поперёк поля: игроки линии
+    edge = S(30)
+    step = (depth - edge * 2) / max(1, len(rows))
+    if horizontal:
+        face = int(min(step * 0.5, span / widest * 0.48, S(170)))
+    else:
+        face = int(min(step * 0.56, span / widest * 0.5, S(170)))
+    name_size = max(S(14), int(face * 0.2))
+    team_size = max(S(11), int(face * 0.15))
+    name_font = post_font(font_key, name_size, 750)
+    team_font = post_font(font_key, team_size, 450)
+    label_h = int(name_size * 1.25 + team_size * 1.3)
+    ring = max(3, int(face * 0.05))
+
+    players = dream['players']
+    index = 0
+    for row_index, count in enumerate(rows):
+        cell = span / count
+        for slot in range(count):
+            # Линия 0 — вратарь у своих ворот, дальше линии к атаке.
+            along = step * (row_index + 0.5) + edge
+            across = cell * (slot + 0.5)
+            if horizontal:
+                cx, cy = int(box[0] + along), int(box[1] + across - label_h / 2)
+                max_w = max(step - S(8), face * 1.2)
+            else:
+                cx, cy = int(box[0] + across), int(box[3] - along - label_h / 2)
+                max_w = max(cell - S(8), face * 1.2)
+            player = players[index] if index < len(players) else None
+            index += 1
+            draw.ellipse((cx - face // 2 - ring, cy - face // 2 - ring, cx + face // 2 + ring, cy + face // 2 + ring),
+                         fill=params['accent'])
+            member, team = player if player else (None, None)
+            photo = cover_local_image(member.photo_path) if member else None
+            if photo:
+                circle = cover_circle(photo, face)
+                canvas.paste(circle, (cx - face // 2, cy - face // 2), circle)
+            else:
+                draw.ellipse((cx - face // 2, cy - face // 2, cx + face // 2, cy + face // 2), fill=(236, 239, 236))
+                mark = (member.last_name[:1] + (member.first_name or ' ')[:1]).upper() if member else '?'
+                post_center_text(draw, cx, cy - int(face * 0.2), mark, post_font(font_key, int(face * 0.32), 750),
+                                 (60, 90, 70))
+            if not member:
+                continue
+            name = dream_short_name(member)
+            font = name_font
+            while font.size > S(10) and draw.textlength(name, font=font) > max_w:
+                font = post_font(font_key, font.size - 1, 750)
+            name_w = draw.textlength(name, font=font)
+            team_name = team.name.upper() if team else ''
+            tfont = team_font
+            while team_name and tfont.size > S(9) and draw.textlength(team_name, font=tfont) > max_w:
+                tfont = post_font(font_key, tfont.size - 1, 450)
+            team_w = draw.textlength(team_name, font=tfont) if team_name else 0
+            ny = cy + face // 2 + ring + S(6)
+            plate_w = max(name_w, team_w) / 2 + S(8)
+            plate_h = font.size * 1.18 + (tfont.size * 1.3 if team_name else 0)
+            draw.rounded_rectangle((cx - plate_w, ny - S(3), cx + plate_w, ny + plate_h),
+                                   radius=S(6), fill=(14, 22, 18))
+            post_center_text(draw, cx, ny, name, font, (255, 255, 255))
+            if team_name:
+                post_center_text(draw, cx, ny + int(font.size * 1.22), team_name, tfont, (190, 214, 198))
+
+
 RU_WEEKDAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
 RU_WEEKDAYS_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 RU_MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа',
@@ -9692,6 +9928,7 @@ POST_RENDERERS = {
     'standings': render_standings,
     'results': render_results,
     'award': render_award,
+    'dream': render_dream,
 }
 
 
@@ -9734,6 +9971,8 @@ def build_post_image(tournament, data):
         params['match'] = db.session.get(TournamentMatch, int(data['match_id']))
     if data.get('group_id'):
         params['group'] = db.session.get(TournamentGroup, int(data['group_id']))
+    if template == 'dream':
+        params['dream'] = resolve_dream_team(tournament, data.get('age_group') or '', data.get('dream'))
     if data.get('award_code'):
         params['award'] = TournamentAward.query.filter_by(
             tournament_id=tournament.id, age_group=data.get('age_group') or '',
@@ -9798,7 +10037,54 @@ def tournament_post_options_api(tournament_id):
         'groups': [{'id': g.id, 'age_group': g.age_group, 'name': g.name} for g in groups],
         'days': days,
         'awards': awards,
+        'dream_formations': {str(size): options for size, options in DREAM_FORMATIONS.items()},
+        'dream_teams': {age: normalize_dream(raw) for age, raw in load_dream_teams(tournament).items()},
+        'dream_players': dream_player_options(tournament, age_groups),
     })
+
+
+def dream_player_options(tournament, age_groups):
+    """Кого можно поставить в сборную: игроки категории со статистикой для подсказки."""
+    out = []
+    for age_group in (age_groups or ['']):
+        stats = collect_player_stats(tournament, age_group) if age_group else {'scorers': [], 'goalkeepers': []}
+        scored = {row['member_id']: row for row in stats['scorers']}
+        kept = {row['member_id']: row for row in stats['goalkeepers']}
+        for member_id, (member, team) in dream_pool(tournament, age_group).items():
+            score = scored.get(member_id) or {}
+            keeper = kept.get(member_id) or {}
+            out.append({
+                'id': member_id,
+                'age_group': age_group,
+                'name': member.full_name,
+                'short_name': dream_short_name(member).title(),
+                'position': member.position,
+                'number': member.team_number,
+                'team_name': team.name if team else '',
+                'goals': score.get('goals', 0),
+                'assists': score.get('assists', 0),
+                'clean_sheets': keeper.get('clean_sheets', 0),
+                'keeper_matches': keeper.get('matches', 0),
+            })
+    return out
+
+
+@app.route('/api/tournaments/<int:tournament_id>/dream-team', methods=['PUT'])
+@login_required
+def tournament_dream_team_api(tournament_id):
+    """Сохранить символическую сборную категории, чтобы не собирать её заново."""
+    ensure_tournament_tables()
+    if not has_tournament_permission('edit'):
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    tournament = Tournament.query.filter_by(id=tournament_id).first_or_404()
+    data = request.get_json() or {}
+    age_group = data.get('age_group') or ''
+    dream = normalize_dream(data, set(dream_pool(tournament, age_group)))
+    teams = load_dream_teams(tournament)
+    teams[age_group] = dream
+    tournament.dream_teams = json.dumps(teams, ensure_ascii=False)
+    db.session.commit()
+    return jsonify({'success': True, 'dream': dream})
 
 
 @app.route('/api/tournament-post-background', methods=['POST'])

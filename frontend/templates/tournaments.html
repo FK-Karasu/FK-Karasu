@@ -8,7 +8,7 @@
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026102302">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026102601">
 </head>
 <body>
     {% include '_sidebar.html' %}
@@ -511,6 +511,26 @@
                             </label>
                         </div>
                         <p class="studio-step-hint" id="studioSourceHint" hidden></p>
+                        <div class="studio-dream" id="studioDream" hidden>
+                            <div class="studio-field">
+                                <span>Формат</span>
+                                <div class="studio-chips" id="studioDreamSizes"></div>
+                            </div>
+                            <div class="studio-row">
+                                <label class="studio-field">
+                                    <span>Схема <small>от защиты к атаке, вратарь отдельно</small></span>
+                                    <select id="studioDreamFormation"></select>
+                                </label>
+                                <div class="studio-dream-actions">
+                                    <button class="btn-secondary" type="button" id="studioDreamAuto"
+                                        title="Вратарь — по сухим матчам, остальные — по голам и передачам с учётом позиции">
+                                        <i data-lucide="sparkles"></i> Заполнить по статистике</button>
+                                    <button class="btn-secondary" type="button" id="studioDreamClear">Очистить</button>
+                                </div>
+                            </div>
+                            <div class="studio-dream-slots" id="studioDreamSlots"></div>
+                            <p class="studio-step-hint" id="studioDreamHint">Выбор сохраняется сам — можно закрыть студию и вернуться.</p>
+                        </div>
                     </section>
 
                     <section class="studio-step">
@@ -976,7 +996,7 @@
     <script src="{{ url_for('static', filename='js/sidebar.js') }}?v=2026080801"></script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/photo_cropper.js') }}?v=2026102301"></script>
-    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026102302"></script>
+    <script src="{{ url_for('static', filename='js/tournaments.js') }}?v=2026102601"></script>
     <script src="{{ url_for('static', filename='js/tournament_board.js') }}?v=2026102301"></script>
     <script src="{{ url_for('static', filename='js/tournament_tour.js') }}?v=2026101704"></script>
 </body>

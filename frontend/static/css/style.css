@@ -18808,3 +18808,54 @@ body .tournament-catalog-modal .modal-content {
         text-align: center;
     }
 }
+
+/* Студия: символическая сборная. */
+.studio-dream {
+    display: grid;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.studio-dream[hidden] { display: none; }
+
+.studio-dream-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.studio-dream-actions .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+    font-size: 13px;
+}
+
+.studio-dream-actions svg { width: 15px; height: 15px; }
+
+.studio-dream-slots {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 8px;
+}
+
+.studio-dream-slot {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+.studio-dream-slot > span {
+    color: #7a808a;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.studio-dream-slot.keeper > span { color: #d86600; }
+
+.studio-dream-slot select {
+    width: 100%;
+    min-height: 38px;
+}

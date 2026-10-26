@@ -2173,6 +2173,7 @@ const STUDIO_TYPES = {
     standings: { icon: 'table-2', hint: 'Очки команд группы' },
     results: { icon: 'trophy', hint: 'Места категории' },
     award: { icon: 'medal', hint: 'Лучший игрок и др.' },
+    dream: { icon: 'shirt', hint: 'Лучшие игроки на поле' },
 };
 
 const STUDIO_THEME_COLORS = {
@@ -2191,7 +2192,158 @@ const studio = {
     timer: null,
     busy: false,
     again: false,
+    dream: null,
+    dreamTimer: null,
 };
+
+/* --- Символическая сборная: формат, схема и игрок на каждую позицию --- */
+
+const DREAM_DEFAULT_SIZE = 7;
+const DREAM_LINE_NAMES = {
+    2: ['Защита', 'Атака'],
+    3: ['Защита', 'Полузащита', 'Атака'],
+    4: ['Защита', 'Опорная зона', 'Полузащита', 'Атака'],
+};
+const DREAM_LINE_POSITIONS = {
+    Защита: 'Защитник', 'Опорная зона': 'Полузащитник', Полузащита: 'Полузащитник', Атака: 'Нападающий',
+};
+
+function dreamFormations(size) {
+    return (studio.options?.dream_formations || {})[String(size)] || [];
+}
+
+function dreamLines(dream) {
+    return [1, ...dream.formation.split('-').map(Number)];
+}
+
+function loadStudioDream() {
+    const saved = (studio.options?.dream_teams || {})[studioValue('studioAge')];
+    const size = saved?.size || DREAM_DEFAULT_SIZE;
+    const formations = dreamFormations(size);
+    studio.dream = {
+        size,
+        formation: formations.includes(saved?.formation) ? saved.formation : formations[0],
+        slots: [...(saved?.slots || [])],
+    };
+    fitDreamSlots();
+}
+
+function fitDreamSlots() {
+    const dream = studio.dream;
+    dream.slots = dream.slots.slice(0, dream.size);
+    while (dream.slots.length < dream.size) dream.slots.push(null);
+}
+
+function dreamPlayers() {
+    const age = studioValue('studioAge');
+    return (studio.options?.dream_players || []).filter((row) => !age || row.age_group === age);
+}
+
+function dreamSlotLabels() {
+    const lines = dreamLines(studio.dream);
+    const names = DREAM_LINE_NAMES[lines.length - 1] || [];
+    const labels = ['Вратарь'];
+    lines.slice(1).forEach((count, index) => {
+        for (let i = 1; i <= count; i += 1) {
+            labels.push(count > 1 ? `${names[index] || 'Линия'} ${i}` : names[index] || 'Линия');
+        }
+    });
+    return labels;
+}
+
+function dreamPlayerTitle(player) {
+    const stats = [player.goals ? `⚽${player.goals}` : '', player.assists ? `🅰${player.assists}` : '',
+        player.clean_sheets ? `🧤${player.clean_sheets}` : ''].filter(Boolean).join(' ');
+    return [player.short_name, player.position ? `(${player.position.slice(0, 3).toLowerCase()})` : '', stats]
+        .filter(Boolean).join(' ');
+}
+
+function renderStudioDream() {
+    const block = byId('studioDream');
+    block.hidden = studio.template !== 'dream';
+    if (block.hidden) return;
+    if (!studio.dream) loadStudioDream();
+    const dream = studio.dream;
+    const sizes = Object.keys(studio.options?.dream_formations || {}).map(Number);
+    studioChips('studioDreamSizes', sizes.map((size) => ({ key: String(size), title: `${size}×${size}` })),
+        String(dream.size), 'dream-size');
+    byId('studioDreamFormation').innerHTML = dreamFormations(dream.size).map((formation) =>
+        `<option value="${escapeHtml(formation)}" ${formation === dream.formation ? 'selected' : ''}>${
+            escapeHtml(formation)}</option>`).join('');
+
+    const players = dreamPlayers();
+    const byTeam = new Map();
+    players.forEach((player) => {
+        if (!byTeam.has(player.team_name)) byTeam.set(player.team_name, []);
+        byTeam.get(player.team_name).push(player);
+    });
+    const taken = new Set(dream.slots.filter(Boolean).map(Number));
+    const labels = dreamSlotLabels();
+    byId('studioDreamSlots').innerHTML = players.length ? labels.map((label, index) => {
+        const current = Number(dream.slots[index]) || null;
+        const groups = [...byTeam.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([team, list]) => `
+            <optgroup label="${escapeHtml(team)}">${list.map((player) => `
+                <option value="${player.id}" ${player.id === current ? 'selected' : ''}
+                    ${player.id !== current && taken.has(player.id) ? 'disabled' : ''}>${escapeHtml(dreamPlayerTitle(player))}</option>`).join('')}
+            </optgroup>`).join('');
+        return `
+            <label class="studio-dream-slot${index === 0 ? ' keeper' : ''}">
+                <span>${escapeHtml(label)}</span>
+                <select data-dream-slot="${index}"><option value="">— не выбран —</option>${groups}</select>
+            </label>`;
+    }).join('') : '<p class="studio-step-hint">В этой категории нет игроков в подтверждённых заявках.</p>';
+    refreshIcons();
+}
+
+function saveStudioDream() {
+    // Сохраняем молча и не чаще раза в секунду: выбор не должен теряться при закрытии студии.
+    window.clearTimeout(studio.dreamTimer);
+    const age = studioValue('studioAge');
+    const body = { age_group: age, ...studio.dream };
+    studio.dreamTimer = window.setTimeout(async () => {
+        try {
+            const data = await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/dream-team`, {
+                method: 'PUT',
+                body: JSON.stringify(body),
+            });
+            if (studio.options) {
+                studio.options.dream_teams = { ...(studio.options.dream_teams || {}), [age]: data.dream };
+            }
+        } catch (error) {
+            showFormError('studioError', `Сборная не сохранилась: ${error.message}`);
+        }
+    }, 800);
+}
+
+function changeStudioDream(apply) {
+    apply(studio.dream);
+    fitDreamSlots();
+    renderStudioDream();
+    saveStudioDream();
+    renderStudio();
+}
+
+function autoFillDream() {
+    const players = dreamPlayers();
+    const used = new Set();
+    const score = (player) => player.goals * 2 + player.assists;
+    const pick = (list) => {
+        const player = list.find((row) => !used.has(row.id));
+        if (player) used.add(player.id);
+        return player ? player.id : null;
+    };
+    const keepers = players.filter((row) => row.position === 'Вратарь')
+        .sort((a, b) => b.clean_sheets - a.clean_sheets || b.keeper_matches - a.keeper_matches);
+    const outfield = players.filter((row) => row.position !== 'Вратарь').sort((a, b) => score(b) - score(a));
+    const labels = dreamSlotLabels();
+    changeStudioDream((dream) => {
+        dream.slots = labels.map((label, index) => {
+            if (index === 0) return pick(keepers);
+            const position = DREAM_LINE_POSITIONS[label.replace(/ \d+$/, '')];
+            return pick(outfield.filter((row) => row.position === position)) || pick(outfield);
+        });
+    });
+}
 
 function studioValue(id) {
     const element = byId(id);
@@ -2270,6 +2422,7 @@ const STUDIO_EMPTY = {
 };
 
 function renderStudioSource() {
+    renderStudioDream();
     const items = studioSourceItems();
     const field = byId('studioSourceField');
     const labels = { schedule: 'День', match: 'Матч', standings: 'Группа', award: 'Награда' };
@@ -2312,6 +2465,7 @@ function studioPayload() {
     if (studio.template === 'match') payload.match_id = source;
     if (studio.template === 'standings') payload.group_id = source;
     if (studio.template === 'award') payload.award_code = source;
+    if (studio.template === 'dream' && studio.dream) payload.dream = studio.dream;
     return payload;
 }
 
@@ -2366,6 +2520,7 @@ async function openStudio(preset = {}) {
         studio.theme = (data.themes[0] || {}).key || 'dark';
         studio.background = data.has_poster ? 'poster' : 'none';
         studio.backgroundPath = null;
+        studio.dream = null;
 
         renderStudioTypes();
         renderStudioFormats();
@@ -3393,6 +3548,24 @@ function bindEvents() {
             renderStudio();
             return;
         }
+        const dreamSize = event.target.closest('[data-dream-size]');
+        if (dreamSize) {
+            changeStudioDream((dream) => {
+                dream.size = Number(dreamSize.dataset.dreamSize);
+                if (!dreamFormations(dream.size).includes(dream.formation)) {
+                    dream.formation = dreamFormations(dream.size)[0];
+                }
+            });
+            return;
+        }
+        if (event.target.closest('#studioDreamAuto')) {
+            autoFillDream();
+            return;
+        }
+        if (event.target.closest('#studioDreamClear')) {
+            changeStudioDream((dream) => { dream.slots = []; });
+            return;
+        }
         const format = event.target.closest('[data-format]');
         if (format) {
             studio.format = format.dataset.format;
@@ -3436,7 +3609,21 @@ function bindEvents() {
         }
     });
     byId('postStudioModal').addEventListener('change', (event) => {
-        if (event.target.id === 'studioAge') renderStudioSource();
+        const slot = event.target.closest('[data-dream-slot]');
+        if (slot) {
+            changeStudioDream((dream) => {
+                dream.slots[Number(slot.dataset.dreamSlot)] = slot.value ? Number(slot.value) : null;
+            });
+            return;
+        }
+        if (event.target.id === 'studioDreamFormation') {
+            changeStudioDream((dream) => { dream.formation = event.target.value; });
+            return;
+        }
+        if (event.target.id === 'studioAge') {
+            studio.dream = null;
+            renderStudioSource();
+        }
         if (event.target.matches('select, input[type="checkbox"]')) renderStudio();
     });
     byId('matchProtocolModal').addEventListener('click', (event) => {
