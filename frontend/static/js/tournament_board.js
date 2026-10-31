@@ -743,9 +743,13 @@
             return `<option value="${player.id}" ${chosen ? 'selected' : ''} ${out ? 'disabled' : ''}>
                 ${escapeHtml(playerTitle(player))}${player.disqualified ? ' — дисквалифицирован' : note}</option>`;
         };
+        // По алфавиту: так игрока проще найти в заявочном листе.
+        const sortedSquad = (side) => [...(board.protocol[side]?.squad || [])].sort((a, b) =>
+            playerTitle(a).localeCompare(playerTitle(b), 'ru'));
         const sideBlock = (side) => {
             const block = board.protocol[side];
-            const squad = block?.squad || [];
+            const squad = sortedSquad(side);
+            const leftOut = block?.left_out || [];
             return `
                 <div class="sp-goal-side">
                     <p class="sp-goal-team">${logoMarkup(match[side].team_name, match[side].team_logo_url)}
@@ -769,13 +773,15 @@
                             </select>
                         </div>`).join('')}
                     ${squad.length ? '' : '<p class="sp-hint">В составе команды нет игроков — добавьте их в карточке команды.</p>'}
+                    ${leftOut.length ? `<p class="sp-hint">Не в этом списке: ${leftOut.map((row) =>
+                        `${escapeHtml(row.name)} (${escapeHtml(row.reason)})`).join(', ')}</p>` : ''}
                     <div class="sp-card-add">
                         <button type="button" data-goal-add="${side}">⚽ + Гол</button>
                     </div>
                 </div>`;
         };
         const cardBlock = (side) => {
-            const squad = board.protocol[side]?.squad || [];
+            const squad = sortedSquad(side);
             return `
                 <div class="sp-goal-side">
                     <p class="sp-goal-team">${logoMarkup(match[side].team_name, match[side].team_logo_url)}

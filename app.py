@@ -6250,20 +6250,44 @@ def roster_stats(tournament):
             'teams_with_roster': teams_with_roster}
 
 
-def entry_squad(entry):
-    """Игроки заявки. Пока составы клуба не разложены — весь состав клуба (как раньше)."""
+def entry_squad_split(entry):
+    """Кто может играть за заявку и кого в ней нет — с причиной для организатора.
+
+    Заявочный лист клуба показываем целиком: игрок без даты рождения или добавленный
+    после раскладки не должен молча пропадать из протокола. Не берём только чужую
+    заявку клуба, снятых организатором и тех, чей известный год не подходит категории.
+    """
     if not entry or not entry.team:
-        return []
+        return [], []
     members = list(entry.team.members)
-    rows = TournamentEntryPlayer.query.filter(
+    rows = {row.member_id: row for row in TournamentEntryPlayer.query.filter(
         TournamentEntryPlayer.tournament_id == entry.tournament_id,
         TournamentEntryPlayer.member_id.in_([m.id for m in members] or [0]),
-        TournamentEntryPlayer.entry_id.isnot(None),
-    ).all()
-    if not rows:
-        return members
-    mine = {row.member_id for row in rows if row.entry_id == entry.id}
-    return [m for m in members if m.id in mine]
+    ).all()}
+    # Составы клуба ещё не разложены — весь состав клуба (как раньше).
+    if not any(row.entry_id for row in rows.values()):
+        return members, []
+    rules = tournament_rules(db.session.get(Tournament, entry.tournament_id))
+    squad, left_out = [], []
+    for member in members:
+        row = rows.get(member.id)
+        if row and row.entry_id:
+            if row.entry_id == entry.id:
+                squad.append(member)
+            continue
+        if row:
+            left_out.append((member, 'снят с заявки в окне «Состав»'))
+            continue
+        year = member_birth_year(member)
+        if year is not None and not tournament_engine.birth_year_fits(year, entry.age_group, rules['allow_play_up']):
+            left_out.append((member, f'{year} г.р. не подходит категории {entry.age_group}'))
+            continue
+        squad.append(member)
+    return squad, left_out
+
+
+def entry_squad(entry):
+    return entry_squad_split(entry)[0]
 
 
 def member_played_for(tournament_id, member_id):
@@ -8003,13 +8027,16 @@ def serialize_protocol(match):
     def team_block(entry):
         if not entry or not entry.team:
             return None
-        squad = [squad_card(m) for m in entry_squad(entry)]
+        members, left_out = entry_squad_split(entry)
+        squad = [squad_card(m) for m in members]
         mine = [a for a in appearances if a.entry_id == entry.id]
         return {
             'entry_id': entry.id,
             'team_name': entry.team.name,
             'team_logo_url': get_tournament_media_url(entry.team.logo_path),
             'squad': squad,
+            'left_out': [{'name': ' '.join(filter(None, [m.last_name, m.first_name])), 'reason': reason}
+                         for m, reason in left_out],
             'lineup': [{
                 'member_id': a.member_id,
                 'is_starting': bool(a.is_starting),
