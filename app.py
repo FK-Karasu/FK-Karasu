@@ -7975,6 +7975,7 @@ def member_card(member):
             member.last_name,
             f'{member.first_name[0]}.' if member.first_name else None,
         ])),
+        'display_name': ' '.join(filter(None, [member.last_name, member.first_name])),
         'number': member.team_number,
         'position': member.position,
         'photo_url': get_tournament_media_url(member.photo_path),

@@ -18859,3 +18859,63 @@ body .tournament-catalog-modal .modal-content {
     width: 100%;
     min-height: 38px;
 }
+
+/* Окошко счёта: полные имена игроков, своя прокрутка и карточки. */
+.score-popover {
+    width: min(560px, calc(100vw - 24px));
+    overscroll-behavior: contain;
+}
+
+.sp-card { grid-template-columns: 18px minmax(0, 1fr) 64px 28px; }
+
+.sp-card-mark {
+    display: inline-block;
+    flex: 0 0 auto;
+    width: 12px;
+    height: 16px;
+    border-radius: 2px;
+}
+
+.sp-card-mark.yellow { background: #f5c518; }
+.sp-card-mark.red { background: #d92d20; }
+
+.sp-card-add {
+    display: flex;
+    gap: 6px;
+}
+
+#scorePopover .sp-card-add button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 30px;
+    padding: 0 10px;
+    border: 1px solid #e4e0dc;
+    border-radius: 8px;
+    background: #fff;
+    color: #5f6673;
+    font-size: 12.5px;
+    cursor: pointer;
+}
+
+#scorePopover .sp-card-remove {
+    width: 28px;
+    height: 28px;
+    min-height: 28px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #969ca6;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.sp-goal { grid-template-columns: 18px minmax(0, 1fr) 64px 28px; }
+
+.sp-saved {
+    margin: 8px 0 0;
+    color: #0f7a4a;
+    font-size: 13px;
+    font-weight: 650;
+    text-align: right;
+}

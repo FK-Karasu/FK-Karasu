@@ -509,7 +509,7 @@
         return all.find((match) => Number(match.id) === Number(id)) || null;
     }
 
-    function openPopover(matchId, anchor) {
+    function openPopover(matchId, anchor, after = null) {
         const match = findMatch(matchId);
         if (!match || match.is_bye) return;
         const ready = Boolean(match.home.entry_id && match.away.entry_id);
@@ -567,17 +567,28 @@
             <div class="sp-actions">
                 ${match.is_played ? '<button type="button" class="sp-link" data-sp-action="protocol">Протокол</button>' : ''}
                 ${match.is_played ? '<button type="button" class="sp-link" data-sp-action="clear">Очистить</button>' : ''}
+                <button type="button" class="sp-link" data-sp-action="close">Закрыть</button>
                 <button type="button" class="sp-save" data-sp-action="save">Сохранить</button>
-            </div>`;
+            </div>
+            ${after?.saved ? '<p class="sp-saved">Сохранено ✓</p>' : ''}`;
         pop.hidden = false;
         syncPenalty();
         board.anchor = anchor;
         placePopover();
         // Без прокрутки: иначе окно турнира прокрутится и окошко тут же закроется.
-        pop.querySelector('[data-sp="home"]').focus({ preventScroll: true });
-        pop.querySelector('[data-sp="home"]').select();
+        if (!after) {
+            pop.querySelector('[data-sp="home"]').focus({ preventScroll: true });
+            pop.querySelector('[data-sp="home"]').select();
+        }
+        if (after?.warning) {
+            const message = pop.querySelector('.sp-error');
+            message.hidden = false;
+            message.textContent = after.warning;
+        }
         board.popoverOpenedAt = Date.now();
-        loadGoalProtocol(match.id);
+        loadGoalProtocol(match.id).then(() => {
+            if (after?.scrollTop) pop.scrollTop = after.scrollTop;
+        });
     }
 
     function pairPickerMarkup(match) {
@@ -652,6 +663,7 @@
     async function loadGoalProtocol(matchId) {
         board.protocol = null;
         board.goals = { home: [], away: [] };
+        board.cards = { home: [], away: [] };
         try {
             const data = await apiJson(`/api/tournament-matches/${matchId}/protocol`);
             if (!board.popoverMatch || board.popoverMatch.id !== matchId) return;
@@ -665,6 +677,14 @@
                     is_penalty: Boolean(event.is_penalty),
                     assist_member_id: event.assist_member_id || null,
                     own_member_id: event.is_own_goal ? event.member_id : null,
+                });
+            });
+            (data.protocol.events || []).filter((event) => event.kind === 'card').forEach((event) => {
+                board.cards[event.entry_id === homeId ? 'home' : 'away'].push({
+                    card: event.card,
+                    member_id: event.member_id || '',
+                    minute: event.minute ?? '',
+                    saved: true,
                 });
             });
         } catch (error) {
@@ -683,6 +703,12 @@
             const assist = row.querySelector('[data-goal-assist]');
             goal.assist_member_id = assist && assist.value && goal.member_id !== 'og'
                 && assist.value !== goal.member_id ? Number(assist.value) : null;
+        });
+        pop.querySelectorAll('[data-card-side]').forEach((row) => {
+            const card = board.cards[row.dataset.cardSide]?.[Number(row.dataset.cardIndex)];
+            if (!card) return;
+            card.member_id = row.querySelector('[data-card-member]').value;
+            card.minute = row.querySelector('[data-card-minute]').value;
         });
     }
 
@@ -707,17 +733,19 @@
             while (list.length < counts[side]) list.push({ member_id: '', minute: '', is_penalty: false });
             list.length = counts[side];
         });
-        if (!counts.home && !counts.away) {
-            host.innerHTML = '';
-            placePopover();
-            return;
-        }
-        const option = (player, selected) => `<option value="${player.id}" ${String(selected) === String(player.id) ? 'selected' : ''}>
-            ${escapeHtml([player.number ? `№${player.number}` : '', player.short_name || player.name].filter(Boolean).join(' '))}</option>`;
+        // Полностью: в списке бывают однофамильцы, а номер нужен судье для сверки.
+        const playerTitle = (player) => [player.display_name || player.name,
+            player.number ? `№${player.number}` : ''].filter(Boolean).join(' ');
+        const option = (player, selected, note = '') => {
+            const chosen = String(selected) === String(player.id);
+            // Дисквалифицированного в матч не поставить — сервер всё равно откажет.
+            const out = player.disqualified && !chosen;
+            return `<option value="${player.id}" ${chosen ? 'selected' : ''} ${out ? 'disabled' : ''}>
+                ${escapeHtml(playerTitle(player))}${player.disqualified ? ' — дисквалифицирован' : note}</option>`;
+        };
         const sideBlock = (side) => {
             const block = board.protocol[side];
             const squad = block?.squad || [];
-            if (!counts[side]) return '';
             return `
                 <div class="sp-goal-side">
                     <p class="sp-goal-team">${logoMarkup(match[side].team_name, match[side].team_logo_url)}
@@ -732,7 +760,7 @@
                             </select>
                             <input data-goal-minute type="number" min="0" max="200" inputmode="numeric" placeholder="мин"
                                 value="${escapeHtml(String(goal.minute ?? ''))}" aria-label="Минута">
-                            <span class="sp-goal-min">′</span>
+                            <button type="button" class="sp-card-remove" data-goal-remove aria-label="Убрать гол">×</button>
                             <select data-goal-assist class="sp-goal-assist" aria-label="Ассистент"
                                 ${goal.member_id === 'og' ? 'hidden' : ''}>
                                 <option value="">ассист: нет</option>
@@ -741,9 +769,41 @@
                             </select>
                         </div>`).join('')}
                     ${squad.length ? '' : '<p class="sp-hint">В составе команды нет игроков — добавьте их в карточке команды.</p>'}
+                    <div class="sp-card-add">
+                        <button type="button" data-goal-add="${side}">⚽ + Гол</button>
+                    </div>
                 </div>`;
         };
-        host.innerHTML = `<p class="sp-goals-title">Голы <small>необязательно</small></p>${sideBlock('home')}${sideBlock('away')}`;
+        const cardBlock = (side) => {
+            const squad = board.protocol[side]?.squad || [];
+            return `
+                <div class="sp-goal-side">
+                    <p class="sp-goal-team">${logoMarkup(match[side].team_name, match[side].team_logo_url)}
+                        ${escapeHtml(match[side].team_name)}</p>
+                    ${board.cards[side].map((card, index) => `
+                        <div class="sp-goal sp-card" data-card-side="${side}" data-card-index="${index}">
+                            <span class="sp-card-mark ${card.card === 'red' ? 'red' : 'yellow'}"
+                                title="${card.card === 'red' ? 'Красная' : 'Жёлтая'} карточка"></span>
+                            <select data-card-member aria-label="Кому карточка">
+                                <option value="">— кому карточка —</option>
+                                ${squad.map((player) => option(player, card.member_id,
+                                    player.yellow_before ? ` · ЖК: ${player.yellow_before}` : '')).join('')}
+                            </select>
+                            <input data-card-minute type="number" min="0" max="200" inputmode="numeric" placeholder="мин"
+                                value="${escapeHtml(String(card.minute ?? ''))}" aria-label="Минута">
+                            <button type="button" class="sp-card-remove" data-card-remove aria-label="Убрать карточку">×</button>
+                        </div>`).join('')}
+                    <div class="sp-card-add">
+                        <button type="button" data-card-add="yellow" data-side="${side}"><i class="sp-card-mark yellow"></i>Жёлтая</button>
+                        <button type="button" data-card-add="red" data-side="${side}"><i class="sp-card-mark red"></i>Красная</button>
+                    </div>
+                </div>`;
+        };
+        host.innerHTML = `
+            <p class="sp-goals-title">Голы <small>нажмите «+ Гол», счёт изменится сам</small></p>
+            ${sideBlock('home')}${sideBlock('away')}
+            <p class="sp-goals-title">Карточки <small>необязательно</small></p>
+            ${cardBlock('home')}${cardBlock('away')}`;
         placePopover();
     }
 
@@ -754,8 +814,13 @@
         readGoalsFromDom();
         const hadGoals = (protocol.events || []).some((event) => event.kind === 'goal');
         const goals = clear ? { home: [], away: [] } : board.goals;
-        const any = goals.home.length || goals.away.length;
-        if (!any && !hadGoals) return;
+        // Очистка убирает счёт и голы, а уже записанные карточки оставляет. Строка без игрока ничего не значит.
+        const cards = ['home', 'away'].flatMap((side) => board.cards[side]
+            .filter((card) => (clear ? card.saved : card.saved || card.member_id))
+            .map((card) => ({ ...card, side })));
+        const hadCards = (protocol.events || []).some((event) => event.kind === 'card');
+        const any = goals.home.length || goals.away.length || cards.length;
+        if (!any && !hadGoals && !hadCards) return null;
         const events = [];
         ['home', 'away'].forEach((side) => {
             goals[side].forEach((goal) => {
@@ -771,17 +836,16 @@
                 });
             });
         });
-        // Карточки и составы из полного протокола не теряем.
-        const homeId = protocol.home?.entry_id;
-        (protocol.events || []).filter((event) => event.kind === 'card').forEach((event) => {
+        cards.forEach((card) => {
             events.push({
-                side: event.entry_id === homeId ? 'home' : 'away',
+                side: card.side,
                 kind: 'card',
-                member_id: event.member_id,
-                minute: event.minute,
-                card: event.card,
+                member_id: card.member_id ? Number(card.member_id) : null,
+                minute: card.minute === '' ? null : Number(card.minute),
+                card: card.card,
             });
         });
+        // Составы из полного протокола не теряем.
         const lineups = {};
         ['home', 'away'].forEach((side) => {
             lineups[side] = (protocol[side]?.lineup || []).map((row) => ({
@@ -791,7 +855,7 @@
                 minutes: row.minutes,
             }));
         });
-        await apiJson(`/api/tournament-matches/${match.id}/protocol`, {
+        return apiJson(`/api/tournament-matches/${match.id}/protocol`, {
             method: 'PUT',
             body: JSON.stringify({ lineups, events }),
         });
@@ -821,6 +885,12 @@
             return input && input.value.trim() !== '' && !clear ? Number(input.value) : null;
         };
         const payload = { home_score: read('home'), away_score: read('away') };
+        // Идёт матч: забила одна команда — у второй пока 0, это не ошибка.
+        if (!clear && (payload.home_score === null) !== (payload.away_score === null)) {
+            const blank = payload.home_score === null ? 'home' : 'away';
+            payload[`${blank}_score`] = 0;
+            pop.querySelector(`[data-sp="${blank}"]`).value = 0;
+        }
         // Время и стадион матча правятся здесь же (раньше — в строках матчей).
         payload.kickoff_at = pop.querySelector('[data-sp="kickoff"]').value;
         payload.stadium_id = pop.querySelector('[data-sp="stadium"]').value || null;
@@ -830,11 +900,6 @@
             payload.away_penalty = read('apen');
         }
         const error = pop.querySelector('.sp-error');
-        if (!clear && (payload.home_score === null) !== (payload.away_score === null)) {
-            error.hidden = false;
-            error.textContent = 'Укажите голы обеих команд';
-            return;
-        }
         try {
             const result = await apiJson(`/api/tournament-matches/${match.id}`, {
                 method: 'PUT',
@@ -846,15 +911,24 @@
                 await saveGoals(true);
             } else {
                 try {
-                    await saveGoals(false);
-                    warning = null;
+                    const saved = await saveGoals(false);
+                    // Например: эта карточка дисквалифицировала игрока — нужна замена.
+                    warning = saved?.notices?.length ? saved.notices.join(' ') : null;
                 } catch (goalError) {
                     warning = `Счёт сохранён, но голы не записаны: ${goalError.message}`;
                 }
             }
+            const scrollTop = pop.scrollTop;
             closePopover();
             await loadCategory();
-            if (warning) showFormError('boardError', warning);
+            // Голы вносят по ходу матча: окошко остаётся открытым для следующего.
+            const anchor = !clear && [...document.querySelectorAll(`[data-board-match="${match.id}"]`)]
+                .find((item) => item.offsetParent);
+            if (!anchor) {
+                if (warning) showFormError('boardError', warning);
+                return;
+            }
+            openPopover(match.id, anchor, { saved: true, warning, scrollTop });
         } catch (requestError) {
             error.hidden = false;
             error.textContent = requestError.message;
@@ -1032,8 +1106,43 @@
             if (event.target.matches('[data-sp="home"], [data-sp="away"]')) renderGoals();
         });
         pop.addEventListener('click', (event) => {
+            const addGoal = event.target.closest('[data-goal-add]');
+            if (addGoal) {
+                const input = pop.querySelector(`[data-sp="${addGoal.dataset.goalAdd}"]`);
+                input.value = (Number(input.value) || 0) + 1;
+                syncPenalty();
+                renderGoals();
+                return;
+            }
+            const removeGoal = event.target.closest('[data-goal-remove]');
+            if (removeGoal) {
+                readGoalsFromDom();
+                const row = removeGoal.closest('[data-goal-side]');
+                const side = row.dataset.goalSide;
+                board.goals[side].splice(Number(row.dataset.goalIndex), 1);
+                pop.querySelector(`[data-sp="${side}"]`).value = board.goals[side].length;
+                syncPenalty();
+                renderGoals();
+                return;
+            }
+            const addCard = event.target.closest('[data-card-add]');
+            if (addCard) {
+                readGoalsFromDom();
+                board.cards[addCard.dataset.side].push({ card: addCard.dataset.cardAdd, member_id: '', minute: '' });
+                renderGoals();
+                return;
+            }
+            const removeCard = event.target.closest('[data-card-remove]');
+            if (removeCard) {
+                readGoalsFromDom();
+                const row = removeCard.closest('[data-card-side]');
+                board.cards[row.dataset.cardSide].splice(Number(row.dataset.cardIndex), 1);
+                renderGoals();
+                return;
+            }
             const action = event.target.closest('[data-sp-action]')?.dataset.spAction;
             if (action === 'save') savePopover();
+            if (action === 'close') closePopover();
             if (action === 'pair') savePair();
             if (action === 'flip') {
                 const home = pop.querySelector('[data-pair="home"]');
@@ -1049,14 +1158,16 @@
             }
         });
         pop.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') { event.preventDefault(); savePopover(); }
+            if (event.key === 'Enter' && !event.target.matches('button')) { event.preventDefault(); savePopover(); }
             if (event.key === 'Escape') { event.stopPropagation(); closePopover(); }
         });
         document.addEventListener('pointerdown', (event) => {
             if (!pop.hidden && !event.target.closest('#scorePopover, [data-board-match]')) closePopover();
         });
         // Прокрутили окно — окошко счёта отрывается от матча, закрываем (но не сразу после открытия).
-        byId('tournamentEntriesModal').addEventListener('scroll', () => {
+        byId('tournamentEntriesModal').addEventListener('scroll', (event) => {
+            // Списки игроков длинные — само окошко листать можно.
+            if (event.target === pop) return;
             if (Date.now() - (board.popoverOpenedAt || 0) > 400) closePopover();
         }, true);
     }
