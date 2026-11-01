@@ -6193,6 +6193,9 @@ def auto_assign_roster(tournament, team_id):
         strict = [e for e in entries
                   if tournament_engine.birth_year_fits(year, e.age_group, False)
                   and (year is not None or tournament_engine.category_years(e.age_group) is None)]
+        # Возраст не ограничен: год лишь подсказывает категорию. Заявка у клуба одна — выбирать не из чего.
+        if len(entries) == 1:
+            strict = entries
         row = rows.get(member.id)
         # Автоматическое решение живёт, только пока выбор однозначен: появилась
         # вторая подходящая заявка (A и B) — пусть выберет человек.
@@ -6215,7 +6218,6 @@ def auto_assign_roster(tournament, team_id):
 
 def roster_stats(tournament):
     """Сколько игроков в каждой заявке и сколько ждут распределения у клуба."""
-    rules = tournament_rules(tournament)
     rows = TournamentEntryPlayer.query.filter_by(tournament_id=tournament.id).all()
     by_member = {row.member_id: row for row in rows}
     by_entry = {}
@@ -6241,10 +6243,7 @@ def roster_stats(tournament):
             row = by_member.get(member.id)
             if row and row.entry_id:
                 continue
-            year = member_birth_year(member)
-            # Ждут решения те, кто может сыграть хотя бы в одной заявке клуба.
-            if any(tournament_engine.birth_year_fits(year, e.age_group, rules['allow_play_up']) for e in items):
-                count += 1
+            count += 1
         unassigned_by_team[team_id] = count
     return {'by_entry': by_entry, 'unassigned_by_team': unassigned_by_team,
             'teams_with_roster': teams_with_roster}
@@ -6253,9 +6252,8 @@ def roster_stats(tournament):
 def entry_squad_split(entry):
     """Кто может играть за заявку и кого в ней нет — с причиной для организатора.
 
-    Заявочный лист клуба показываем целиком: игрок без даты рождения или добавленный
-    после раскладки не должен молча пропадать из протокола. Не берём только чужую
-    заявку клуба, снятых организатором и тех, чей известный год не подходит категории.
+    Заявочный лист клуба показываем целиком, возраст не ограничен. Не берём только
+    игроков другой заявки этого клуба и снятых организатором.
     """
     if not entry or not entry.team:
         return [], []
@@ -6264,10 +6262,6 @@ def entry_squad_split(entry):
         TournamentEntryPlayer.tournament_id == entry.tournament_id,
         TournamentEntryPlayer.member_id.in_([m.id for m in members] or [0]),
     ).all()}
-    # Составы клуба ещё не разложены — весь состав клуба (как раньше).
-    if not any(row.entry_id for row in rows.values()):
-        return members, []
-    rules = tournament_rules(db.session.get(Tournament, entry.tournament_id))
     squad, left_out = [], []
     for member in members:
         row = rows.get(member.id)
@@ -6277,10 +6271,6 @@ def entry_squad_split(entry):
             continue
         if row:
             left_out.append((member, 'снят с заявки в окне «Состав»'))
-            continue
-        year = member_birth_year(member)
-        if year is not None and not tournament_engine.birth_year_fits(year, entry.age_group, rules['allow_play_up']):
-            left_out.append((member, f'{year} г.р. не подходит категории {entry.age_group}'))
             continue
         squad.append(member)
     return squad, left_out
@@ -6395,21 +6385,9 @@ def serialize_roster(tournament, team):
     players = []
     for member in sorted(team.members, key=lambda m: (m.last_name or '', m.first_name or '')):
         year = member_birth_year(member)
-        eligible = [e.id for e in active
-                    if tournament_engine.birth_year_fits(year, e.age_group, rules['allow_play_up'])
-                    and (year is not None or tournament_engine.category_years(e.age_group) is None)]
+        eligible = [e.id for e in active]
         row = rows.get(member.id)
         entry_id = row.entry_id if row else None
-        issue = None
-        if not eligible:
-            spans = [tournament_engine.category_years(e.age_group) for e in active]
-            spans = [span for span in spans if span]
-            if year is None:
-                issue = 'no_birth_date'
-            elif spans and year < min(span[0] for span in spans):
-                issue = 'too_old'
-            elif spans:
-                issue = 'too_young'
         card = member_card(member)
         state = discipline.get(member.id)
         replacement = replacements.get(member.id)
@@ -6426,9 +6404,6 @@ def serialize_roster(tournament, team):
             'replaces_name': row.replaces_member.full_name if row and row.replaces_member else None,
             'is_auto': bool(row and row.is_auto),
             'eligible': eligible,
-            # Уже стоит туда, куда по правилам нельзя (например, выключили «младших за старших»).
-            'violates': bool(entry_id and entry_id not in eligible),
-            'issue': issue,
         })
     return {
         'team': {'id': team.id, 'name': team.name,
@@ -6486,22 +6461,6 @@ def tournament_roster_move_api(tournament_id):
             return jsonify({'success': False, 'message': 'Эта заявка не принадлежит клубу игрока'}), 400
         if entry.status == TournamentEntry.STATUS_DECLINED:
             return jsonify({'success': False, 'message': 'Команда отказалась от этой категории'}), 400
-        rules = tournament_rules(tournament)
-        year = member_birth_year(member)
-        span = tournament_engine.category_years(entry.age_group)
-        if span and year is None:
-            return jsonify({'success': False, 'message':
-                            f'У игрока {member.full_name} не указана дата рождения — '
-                            'без неё нельзя проверить возраст. Укажите её в карточке команды.'}), 400
-        if not tournament_engine.birth_year_fits(year, entry.age_group, rules['allow_play_up']):
-            if span and year > span[1]:
-                hint = (' Младшим можно играть за старших, если включить это правило '
-                        'в окне состава.')
-            else:
-                hint = ''
-            return jsonify({'success': False, 'message':
-                            f'{member.full_name} ({year} г.р.) не подходит в {entry.age_group} '
-                            f'({years_caption(entry.age_group)}).{hint}'}), 400
 
     played = member_played_for(tournament.id, member.id)
     if played and played != entry_id:
@@ -9160,6 +9119,7 @@ POST_TEMPLATES = {
     'standings': 'Таблица группы',
     'results': 'Итоги турнира',
     'award': 'Награда',
+    'playoff': 'Сетка плей-офф',
     'dream': 'Символическая сборная',
 }
 POST_ACCENTS = ['#ff9a2b', '#e63946', '#2a9d8f', '#4361ee', '#f4a261', '#111827']
@@ -9949,6 +9909,124 @@ def entry_known(match, side):
     return bool(entry and entry.team)
 
 
+def playoff_round_title(count):
+    return {1: 'Финал', 2: 'Полуфинал'}.get(count) or f'1/{count} финала'
+
+
+def render_playoff(canvas, params, margin):
+    """Сетка плей-офф: раунды колонками, линии к следующему матчу, справа внизу — за 3 место."""
+    draw = ImageDraw.Draw(canvas)
+    S = lambda value: post_scale(params, value)
+    font_key = params['font']
+    top = params['content_top']
+    title = params.get('title') or 'Плей-офф'
+    title_font = fit_text_font(draw, title, canvas.width - margin * 2, S(56), font_key, 750, minimum=S(30))
+    draw.text((margin, top), title, font=title_font, fill=params['ink'])
+    top += int(title_font.size * 1.35)
+
+    matches = TournamentMatch.query.filter_by(
+        tournament_id=params['tournament'].id, age_group=params.get('age_group') or '',
+        stage=TournamentMatch.STAGE_PLAYOFF).all()
+    bronze = next((m for m in matches if m.label == BRONZE_LABEL), None)
+    main = [m for m in matches if m is not bronze]
+    if not main:
+        post_center_text(draw, canvas.width // 2, (top + params['content_bottom']) // 2,
+                         'Сетка плей-офф ещё не составлена', post_font(font_key, S(34), 500), params['muted'])
+        return
+
+    by_round = {}
+    for match in main:
+        by_round.setdefault(match.round_no, []).append(match)
+    columns = [sorted(by_round[key], key=lambda m: (m.bracket_slot or 0, m.id)) for key in sorted(by_round)]
+    titles = [playoff_round_title(len(column)) for column in columns]
+    # Пустые матчи первого раунда (проход без игры) не рисуем: команда уже стоит в следующем.
+    shown = [[m for m in column if not m.is_bye] for column in columns]
+
+    widest = max(len(column) for column in shown) or 1
+    rows = widest + 1 if bronze and widest <= 2 else widest
+    gap_x = S(34)
+    col_w = (canvas.width - margin * 2 - gap_x * (len(columns) - 1)) / len(columns)
+    head_h = S(38)
+    area_top = top + head_h
+    area_h = params['content_bottom'] - area_top
+    step = area_h / rows
+    card_h = int(min(step * 0.86, S(190)))
+    name_size = max(S(15), min(int(card_h * 0.17), S(30)))
+    head_font = post_font(font_key, max(S(15), min(S(24), int(col_w * 0.075))), 700)
+    plate = params['plate']
+    line = params['muted']
+
+    centers = {}
+    for index, column in enumerate(shown):
+        if index == 0:
+            for slot, match in enumerate(column):
+                centers[match.id] = area_top + step * (slot + 0.5)
+            continue
+        feeders = {m.id: [centers[f.id] for f in shown[index - 1] if f.next_match_id == m.id] for m in column}
+        for slot, match in enumerate(column):
+            ys = feeders[match.id]
+            centers[match.id] = sum(ys) / len(ys) if ys and all(feeders[m.id] for m in column) \
+                else area_top + area_h * (slot + 0.5) / max(1, len(column)) * (widest / rows)
+
+    def draw_card(match, x, center_y):
+        y0 = int(center_y - card_h / 2)
+        draw.rounded_rectangle((x, y0, x + col_w, y0 + card_h), radius=S(14), fill=plate)
+        when = match.kickoff_at.strftime('%d.%m, %H:%M') if match.kickoff_at else ''
+        meta_h = 0
+        if when and card_h >= S(90):
+            meta_font = post_font(font_key, max(S(12), int(name_size * 0.72)), 450)
+            draw.text((x + S(14), y0 + S(8)), when, font=meta_font, fill=params['muted'])
+            meta_h = int(meta_font.size * 1.35) + S(4)
+        row_h = (card_h - meta_h - S(10)) / 2
+        logo = int(min(row_h * 0.72, S(44)))
+        for side_index, side in enumerate(('home', 'away')):
+            name, logo_path = post_side_name(match, side)
+            known = entry_known(match, side)
+            cy = int(y0 + meta_h + S(5) + row_h * (side_index + 0.5))
+            text_x = x + S(14)
+            if known:
+                post_logo(canvas, logo_path, (int(x + S(14) + logo / 2), cy), logo, (255, 255, 255))
+                text_x += logo + S(10)
+            score = match.home_score if side == 'home' else match.away_score
+            penalty = match.home_penalty if side == 'home' else match.away_penalty
+            other = match.away_score if side == 'home' else match.home_score
+            played = match.is_played and score is not None
+            other_penalty = match.away_penalty if side == 'home' else match.home_penalty
+            won = played and (score > other or (score == other and penalty is not None
+                                                and penalty > (other_penalty or 0)))
+            score_text = '' if not played else f'{score}' + (f' ({penalty})' if penalty is not None else '')
+            score_font = post_font(font_key, name_size, 750)
+            score_w = draw.textlength(score_text, font=score_font) if score_text else 0
+            room = x + col_w - S(14) - score_w - S(8) - text_x
+            font = fit_text_font(draw, name, room, name_size, font_key, 700 if won else 500, minimum=max(S(10), 10))
+            while name and draw.textlength(name, font=font) > room:
+                name = name[:-1]
+            draw.text((text_x, cy - font.size * 0.62), name, font=font,
+                      fill=params['ink'] if known else params['muted'])
+            if score_text:
+                draw.text((x + col_w - S(14) - score_w, cy - score_font.size * 0.62), score_text, font=score_font,
+                          fill=params['accent'] if won else params['ink'])
+
+    xs = [margin + index * (col_w + gap_x) for index in range(len(columns))]
+    width = max(2, S(3))
+    for index, column in enumerate(shown):
+        for match in column:
+            if index + 1 < len(shown) and match.next_match_id in centers:
+                x0, x1 = xs[index] + col_w, xs[index + 1]
+                mid = (x0 + x1) / 2
+                y0, y1 = centers[match.id], centers[match.next_match_id]
+                draw.line([(x0, y0), (mid, y0), (mid, y1), (x1, y1)], fill=line, width=width)
+    for index, column in enumerate(shown):
+        draw.text((xs[index], top), titles[index].upper(), font=head_font, fill=params['muted'])
+        for match in column:
+            draw_card(match, xs[index], centers[match.id])
+    if bronze:
+        bronze_y = area_top + area_h - card_h / 2 - S(4)
+        draw.text((xs[-1], bronze_y - card_h / 2 - head_font.size - S(10)), BRONZE_LABEL.upper(), font=head_font,
+                  fill=params['muted'])
+        draw_card(bronze, xs[-1], bronze_y)
+
+
 POST_RENDERERS = {
     'announce': render_announce,
     'schedule': render_schedule,
@@ -9957,6 +10035,7 @@ POST_RENDERERS = {
     'results': render_results,
     'award': render_award,
     'dream': render_dream,
+    'playoff': render_playoff,
 }
 
 
@@ -10191,25 +10270,6 @@ def tournament_start_moment(tournament):
     return datetime.combine(tournament.start_date, start_time)
 
 
-def tournament_allowed_birth_years(tournament):
-    """Годы рождения, разрешённые возрастными категориями турнира.
-
-    Понимает «2015», «2015 г.р.» и диапазоны «2010-2011 B». Подписи без года
-    («U-12») ограничений не задают. Пустой список означает «без ограничений».
-    Если младшим разрешено играть за старших, подходят и более поздние годы.
-    """
-    if not tournament:
-        return []
-    years = set()
-    for label in tournament_age_group_labels(tournament):
-        span = tournament_engine.category_years(label)
-        if span:
-            years.update(range(span[0], span[1] + 1))
-    if years and tournament_rules(tournament)['allow_play_up']:
-        years.update(range(min(years), get_local_date().year + 1))
-    return sorted(years)
-
-
 def share_link_is_open(link):
     """Ссылка принимает правки, пока не отозвана и турнир не начался."""
     if not link or link.revoked_at:
@@ -10336,7 +10396,6 @@ def share_form_payload(link):
         },
         'deadline': deadline.isoformat() if deadline else None,
         'editable': share_link_is_open(link),
-        'allowed_birth_years': tournament_allowed_birth_years(link.tournament),
         'members': [public_member_payload(member) for member in members],
     }
 
@@ -10364,7 +10423,7 @@ def team_share_form_api(token):
     return jsonify(share_form_payload(link))
 
 
-def apply_public_member_form(member, allowed_birth_years=()):
+def apply_public_member_form(member):
     """Упрощённая форма тренера: обязательны только фамилия, имя и дата рождения."""
     member.last_name = (request.form.get('last_name') or '').strip()
     member.first_name = (request.form.get('first_name') or '').strip()
@@ -10378,9 +10437,6 @@ def apply_public_member_form(member, allowed_birth_years=()):
         raise ValueError('Укажите фамилию и имя участника')
     if not member.birth_date:
         raise ValueError('Укажите дату рождения в формате дд.мм.гггг')
-    if allowed_birth_years and member.birth_date.year not in allowed_birth_years:
-        years = ', '.join(str(year) for year in allowed_birth_years)
-        raise ValueError(f'Турнир проводится для {years} г.р. — год рождения не подходит')
 
 
 @app.route('/api/team-form/<token>/members', methods=['POST'])
@@ -10392,7 +10448,7 @@ def team_share_form_add_member(token):
         return jsonify({'success': False, 'message': 'Турнир уже начался — состав больше не редактируется'}), 403
     member = TournamentTeamMember(team_id=link.team_id, last_name='', first_name='')
     try:
-        apply_public_member_form(member, tournament_allowed_birth_years(link.tournament))
+        apply_public_member_form(member)
     except ValueError as exc:
         return jsonify({'success': False, 'message': str(exc)}), 400
     photo_file = request.files.get('photo')
@@ -10437,7 +10493,7 @@ def team_share_form_member_detail(token, member_id):
         return jsonify({'success': True})
 
     try:
-        apply_public_member_form(member, tournament_allowed_birth_years(link.tournament))
+        apply_public_member_form(member)
     except ValueError as exc:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(exc)}), 400

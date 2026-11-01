@@ -60,6 +60,16 @@ const byId = (id) => document.getElementById(id);
 const AGE_GROUP_MIN_YEAR = 1980;
 const ADD_STADIUM_OPTION = '__add_stadium__';
 
+// С открытой клавиатурой телефона видимая часть экрана меньше 100vh: окна подстраиваем
+// под неё, иначе низ окна с кнопкой «Сохранить» остаётся под клавиатурой.
+function syncVisibleHeight() {
+    const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    document.documentElement.style.setProperty('--visible-height', `${Math.round(height)}px`);
+}
+syncVisibleHeight();
+window.visualViewport?.addEventListener('resize', syncVisibleHeight);
+window.addEventListener('resize', syncVisibleHeight);
+
 function escapeHtml(value) {
     // Значение подставляется и в текст, и в атрибуты. innerHTML не трогает
     // кавычки, из-за чего название вида «"Джар" спорт комплекс» обрывало
@@ -1847,6 +1857,14 @@ function bindDragBoard(board, { item, zone, canDrop = () => true, onDrop, isLock
 
     board.addEventListener('pointerup', finish);
     board.addEventListener('pointercancel', () => cleanup());
+    // Карточки разрешают прокрутку пальцем (touch-action в CSS). Палец удержали и перенос
+    // начался — тогда этот жест уже не прокрутка, иначе браузер его отменит.
+    board.addEventListener('touchmove', (event) => {
+        if (drag?.active) event.preventDefault();
+    }, { passive: false });
+    board.addEventListener('contextmenu', (event) => {
+        if (drag) event.preventDefault();
+    });
 }
 
 function openScheduleDialog() {
@@ -1942,7 +1960,7 @@ function rosterCardsMarkup(player) {
 }
 
 function rosterReplaceMarkup(player) {
-    // Кандидаты: свободные игроки клуба, которым по возрасту подходит эта категория.
+    // Кандидаты: свободные игроки клуба.
     const data = catalogState.roster;
     if (player.replaced_by) return `<span class="roster-flag ok">замена: ${escapeHtml(player.replaced_by)}</span>`;
     const free = data.players.filter((item) => !item.entry_id && !item.disqualified
@@ -1992,12 +2010,10 @@ function rosterPlayerMarkup(player, categories) {
         .concat(targets.map((category) =>
             `<option value="${category.entry_id}">${escapeHtml(category.age_group)}</option>`))
         .concat(player.entry_id ? ['<option value="">Убрать из категории</option>'] : []);
-    const flag = player.violates
-        ? '<span class="roster-flag bad">не по возрасту</span>'
-        : player.replaces_name ? `<span class="roster-flag swap" title="Заявлен вместо дисквалифицированного">вместо ${escapeHtml(player.replaces_name)}</span>`
+    const flag = player.replaces_name ? `<span class="roster-flag swap" title="Заявлен вместо дисквалифицированного">вместо ${escapeHtml(player.replaces_name)}</span>`
         : player.is_auto ? '<span class="roster-flag auto" title="Поставлен автоматически по году рождения">авто</span>' : '';
     return `
-        <div class="roster-player${player.violates ? ' violates' : ''}${player.issue ? ' muted' : ''}"
+        <div class="roster-player"
             data-member="${player.id}" data-eligible="${player.eligible.join(',')}">
             <span class="roster-face"${player.photo_url ? ` style="background-image:url('${escapeHtml(player.photo_url)}')"` : ''}>
                 ${player.photo_url ? '' : escapeHtml(initials(player.name))}</span>
@@ -2007,14 +2023,8 @@ function rosterPlayerMarkup(player, categories) {
             </span>
             ${rosterCardsMarkup(player)}
             ${flag}
-            ${!player.eligible.length && !player.entry_id
-                ? `<span class="roster-fix">${player.issue === 'no_birth_date'
-                    ? 'Укажите дату рождения в карточке команды'
-                    : player.issue === 'too_young'
-                        ? 'Включите «Младшие могут играть за старших», если регламент разрешает'
-                        : 'По возрасту не подходит ни в одну категорию'}</span>`
-                : `<select class="roster-move" data-move="${player.id}"
-                    aria-label="Категория для ${escapeHtml(player.name)}">${options.join('')}</select>`}
+            <select class="roster-move" data-move="${player.id}"
+                aria-label="Категория для ${escapeHtml(player.name)}">${options.join('')}</select>
         </div>`;
 }
 
@@ -2022,12 +2032,10 @@ function renderRoster() {
     const data = catalogState.roster;
     if (!data) return;
     byId('rosterTitle').textContent = data.team.name;
-    byId('rosterPlayUp').checked = Boolean(data.rules.allow_play_up);
     const categories = data.categories.filter((category) => !category.declined);
     const declined = data.categories.filter((category) => category.declined);
     const free = data.players.filter((player) => !player.entry_id && !player.disqualified);
-    const waiting = free.filter((player) => player.eligible.length);
-    const blocked = free.filter((player) => !player.eligible.length);
+    const waiting = free;
 
     const summary = byId('rosterSummary');
     const needReplace = data.players.filter((player) => player.disqualified && player.entry_id && !player.replaced_by);
@@ -2061,14 +2069,9 @@ function renderRoster() {
             ${extra}
         </section>`;
 
-    const blockedMarkup = blocked.length ? `
-        <div class="roster-blocked">
-            <p>Не могут играть ни в одной категории клуба:</p>
-            ${blocked.map((player) => rosterPlayerMarkup(player, categories)).join('')}
-        </div>` : '';
 
     byId('rosterBoard').innerHTML = [
-        column('Не распределены', pluralizeMembers(waiting.length), '', waiting, blockedMarkup),
+        column('Не распределены', pluralizeMembers(waiting.length), '', waiting, ''),
         ...categories.map((category) => {
             const players = data.players.filter((player) => player.entry_id === category.entry_id);
             const active = players.filter((player) => !player.disqualified).length;
@@ -2104,20 +2107,6 @@ async function moveRosterPlayer(memberId, entryId, replacesId = null) {
     }
 }
 
-async function setPlayUp(enabled) {
-    try {
-        showFormError('rosterError');
-        await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/rules`, {
-            method: 'PUT',
-            body: JSON.stringify({ allow_play_up: enabled }),
-        });
-        await loadRoster();
-        catalogState.rosterDirty = true;
-    } catch (error) {
-        showFormError('rosterError', error.message);
-    }
-}
-
 function bindRosterModal() {
     const board = byId('rosterBoard');
     bindDragBoard(board, {
@@ -2141,7 +2130,6 @@ function bindRosterModal() {
         closeRosterModal();
         openTeamDetails(catalogState.rosterTeamId).catch(showPageError);
     });
-    byId('rosterPlayUp').addEventListener('change', (event) => setPlayUp(event.target.checked));
     byId('rosterOpenTeam').addEventListener('click', () => {
         closeRosterModal();
         openTeamDetails(catalogState.rosterTeamId).catch(showPageError);
@@ -2173,6 +2161,7 @@ const STUDIO_TYPES = {
     standings: { icon: 'table-2', hint: 'Очки команд группы' },
     results: { icon: 'trophy', hint: 'Места категории' },
     award: { icon: 'medal', hint: 'Лучший игрок и др.' },
+    playoff: { icon: 'network', hint: 'Полуфиналы, финал, 3 место' },
     dream: { icon: 'shirt', hint: 'Лучшие игроки на поле' },
 };
 

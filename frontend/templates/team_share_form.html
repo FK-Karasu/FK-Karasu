@@ -444,7 +444,7 @@
         <details class="coach-tips">
             <summary>Подсказки тренеру — прочитайте перед заполнением</summary>
             <ol>
-                <li><b>Дата рождения обязательна.</b> По году рождения система сама поставит игрока в подходящую возрастную категорию турнира. Без даты игрока не допустят к матчам.</li>
+                <li><b>Дата рождения обязательна.</b> Возраст игрока не ограничен, в заявку можно внести игрока любого года рождения.</li>
                 <li><b>Один игрок — одна категория.</b> Если команда играет в 2010 A и 2010 B, каждый игрок выступает только за одну из них. Распределение проверит организатор.</li>
                 <li><b>Добавьте запасных.</b> Красная карточка или 3 жёлтые за турнир = дисквалификация до конца турнира. Вместо такого игрока можно заявить замену только из уже внесённых игроков клуба.</li>
                 <li><b>Фото и номер</b> нужны для протокола и табло на стадионе — лучше заполнить сразу.</li>
@@ -489,7 +489,6 @@
                 <label>
                     <span>Дата рождения *</span>
                     <input name="birth_date" type="date" required>
-                    <small class="field-hint" id="birthHint" hidden></small>
                 </label>
                 <label>
                     <span>Позиция <small>необяз.</small></span>
@@ -526,7 +525,7 @@
         const API = `/api/team-form/${TOKEN}`;
 
         const state = { editable: false, members: [], editingId: null,
-                        allowedYears: [], avatarObjectUrl: null };
+                        avatarObjectUrl: null };
         const byId = (id) => document.getElementById(id);
         const form = byId('memberForm');
 
@@ -594,39 +593,11 @@
             }
         }
 
-        function applyBirthYearLimits() {
-            const input = form.birth_date;
-            const hint = byId('birthHint');
-            const years = state.allowedYears;
-            if (!years.length) {
-                input.removeAttribute('min');
-                input.removeAttribute('max');
-                hint.hidden = true;
-                return;
-            }
-            // Календарь ограничиваем краями диапазона, а точное попадание
-            // в список проверяем отдельно — годы могут идти не подряд.
-            input.min = `${years[0]}-01-01`;
-            input.max = `${years[years.length - 1]}-12-31`;
-            hint.textContent = years.length === 1
-                ? `Турнир для ${years[0]} г.р.`
-                : `Турнир для ${years.join(', ')} г.р.`;
-            hint.hidden = false;
-        }
-
-        function birthYearError() {
-            const value = form.birth_date.value;
-            if (!value || !state.allowedYears.length) return '';
-            const year = Number(value.slice(0, 4));
-            if (state.allowedYears.includes(year)) return '';
-            return `Турнир проводится для ${state.allowedYears.join(', ')} г.р. — год рождения не подходит`;
-        }
-
         function refreshSubmitState() {
             const filled = form.last_name.value.trim()
                 && form.first_name.value.trim()
                 && form.birth_date.value;
-            byId('submitBtn').disabled = !filled || Boolean(birthYearError());
+            byId('submitBtn').disabled = !filled;
         }
 
         function showError(message) {
@@ -736,8 +707,6 @@
             const data = await request(API);
             state.editable = data.editable;
             state.members = data.members || [];
-            state.allowedYears = data.allowed_birth_years || [];
-            applyBirthYearLimits();
             refreshSubmitState();
             byId('teamName').textContent = data.team.name || 'Команда';
             if (data.team.logo_url) {
@@ -755,8 +724,6 @@
             submitBtn.disabled = true;
             try {
                 showError('');
-                const yearProblem = birthYearError();
-                if (yearProblem) throw new Error(yearProblem);
                 const payload = new FormData(form);
                 if (!payload.get('photo') || !payload.get('photo').name) payload.delete('photo');
                 const editingId = state.editingId;

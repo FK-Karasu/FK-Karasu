@@ -648,13 +648,15 @@
         const anchor = board.anchor;
         if (!anchor || pop.hidden) return;
         const rect = anchor.getBoundingClientRect();
+        // Видимая часть экрана: с клавиатурой телефона она меньше окна браузера.
+        const screenHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
         const width = pop.offsetWidth;
         const height = pop.offsetHeight;
         const left = Math.min(Math.max(12, rect.left + rect.width / 2 - width / 2), window.innerWidth - width - 12);
-        const below = rect.bottom + 8 + height < window.innerHeight;
+        const below = rect.bottom + 8 + height < screenHeight;
         const top = below ? rect.bottom + 8 : Math.max(12, rect.top - height - 8);
         pop.style.left = `${left}px`;
-        pop.style.top = `${Math.max(12, Math.min(top, window.innerHeight - height - 12))}px`;
+        pop.style.top = `${Math.max(12, Math.min(top, screenHeight - height - 12))}px`;
     }
 
     /* Кто забил и на какой минуте. Пишется в протокол матча — оттуда считаются бомбардиры.
@@ -1171,6 +1173,7 @@
             if (!pop.hidden && !event.target.closest('#scorePopover, [data-board-match]')) closePopover();
         });
         // Прокрутили окно — окошко счёта отрывается от матча, закрываем (но не сразу после открытия).
+        window.visualViewport?.addEventListener('resize', placePopover);
         byId('tournamentEntriesModal').addEventListener('scroll', (event) => {
             // Списки игроков длинные — само окошко листать можно.
             if (event.target === pop) return;

@@ -8063,7 +8063,10 @@ small,
     max-height: min(90vh, 780px) !important;
     margin: 32px auto !important;
     padding: 0 !important;
-    overflow: hidden !important;
+    /* Длинное содержимое листаем, а не обрезаем: это и была общая причина
+       «список виден не полностью» во всех окнах. */
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
     background: #fff !important;
     border: 1px solid var(--theme-border) !important;
     border-radius: 12px !important;
@@ -11173,9 +11176,8 @@ main.main-content.tournaments-page .tournament-action-btn.danger:hover {
 .group-team {
     display: flex;
     align-items: center;
-    /* Перенос идёт на pointer-событиях, поэтому браузерные жесты на карточке
-       отключаем — прокрутка остаётся на колонках и фоне. */
-    touch-action: none;
+    /* Прокрутка пальцем работает и по карточке; перенос начинается после удержания. */
+    touch-action: pan-x pan-y;
     user-select: none;
     align-items: center;
     gap: 9px;
@@ -15864,7 +15866,7 @@ table.stat-table tr.stat-muted td { opacity: .5; }
     border-radius: 10px;
     background: #fff;
     cursor: grab;
-    touch-action: none;
+    touch-action: pan-x pan-y;
     user-select: none;
 }
 
@@ -16462,7 +16464,7 @@ table.stat-table tr.stat-muted td { opacity: .5; }
     border-radius: 999px;
     background: #fff;
     cursor: grab;
-    touch-action: none;
+    touch-action: pan-x pan-y;
     user-select: none;
 }
 
@@ -18919,3 +18921,52 @@ body .tournament-catalog-modal .modal-content {
     font-weight: 650;
     text-align: right;
 }
+
+/* Окна турниров и окошко счёта не уходят под клавиатуру телефона. */
+.tournament-catalog-modal {
+    bottom: auto !important;
+    height: var(--visible-height, 100dvh) !important;
+}
+
+.tournament-catalog-modal .modal-content {
+    max-height: calc(var(--visible-height, 100dvh) - 16px) !important;
+}
+
+.score-popover {
+    max-height: calc(var(--visible-height, 100dvh) - 24px);
+}
+
+/* Таблицы окон не распирают экран телефона: листаются вбок внутри своей рамки. */
+.team-members-table-wrap,
+.catalog-table-wrap {
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Вкладка «Турнир» на телефоне: сетка grid не должна растягиваться по содержимому,
+   иначе панель шире экрана и край обрезается. Широкие таблицы листаются в своей рамке. */
+#tournamentEntriesModal .team-details-body > *,
+#tournamentEntriesModal [data-entry-panel],
+#tournamentEntriesModal [data-entry-panel] > *,
+.board-bar > *,
+.board-groups > * {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.board-bar,
+.board-groups {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.mx-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.tiebreak-inline {
+    flex-wrap: wrap;
+    max-width: 100%;
+}
+
