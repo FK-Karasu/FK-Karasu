@@ -9913,8 +9913,94 @@ def playoff_round_title(count):
     return {1: 'Финал', 2: 'Полуфинал'}.get(count) or f'1/{count} финала'
 
 
+def draw_post_match_card(canvas, params, match, x, center_y, width, card_h, name_size, caption=''):
+    """Карточка матча для сетки: время (и подпись), две команды со счётом, победитель выделен."""
+    draw = ImageDraw.Draw(canvas)
+    S = lambda value: post_scale(params, value)
+    font_key = params['font']
+    col_w = width
+    plate = params['plate']
+    y0 = int(center_y - card_h / 2)
+    draw.rounded_rectangle((x, y0, x + col_w, y0 + card_h), radius=S(14), fill=plate)
+    when = ' · '.join(filter(None, [caption, match.kickoff_at.strftime('%d.%m, %H:%M') if match.kickoff_at else '']))
+    meta_h = 0
+    # Подпись «За 5 место» нужна всегда, время — если хватает высоты.
+    if when and (caption or card_h >= S(90)):
+        meta_font = fit_text_font(draw, when, col_w - S(28), max(S(12), int(name_size * 0.72)), font_key, 550,
+                                  minimum=max(S(9), 9))
+        draw.text((x + S(14), y0 + S(8)), when, font=meta_font, fill=params['accent'] if caption else params['muted'])
+        meta_h = int(meta_font.size * 1.35) + S(4)
+    row_h = (card_h - meta_h - S(10)) / 2
+    logo = int(min(row_h * 0.72, S(44)))
+    for side_index, side in enumerate(('home', 'away')):
+        name, logo_path = post_side_name(match, side)
+        known = entry_known(match, side)
+        cy = int(y0 + meta_h + S(5) + row_h * (side_index + 0.5))
+        text_x = x + S(14)
+        if known:
+            post_logo(canvas, logo_path, (int(x + S(14) + logo / 2), cy), logo, (255, 255, 255))
+            text_x += logo + S(10)
+        score = match.home_score if side == 'home' else match.away_score
+        penalty = match.home_penalty if side == 'home' else match.away_penalty
+        other = match.away_score if side == 'home' else match.home_score
+        played = match.is_played and score is not None
+        other_penalty = match.away_penalty if side == 'home' else match.home_penalty
+        won = played and (score > other or (score == other and penalty is not None
+                                            and penalty > (other_penalty or 0)))
+        score_text = '' if not played else f'{score}' + (f' ({penalty})' if penalty is not None else '')
+        score_font = post_font(font_key, name_size, 750)
+        score_w = draw.textlength(score_text, font=score_font) if score_text else 0
+        room = x + col_w - S(14) - score_w - S(8) - text_x
+        font = fit_text_font(draw, name, room, name_size, font_key, 700 if won else 500, minimum=max(S(10), 10))
+        while name and draw.textlength(name, font=font) > room:
+            name = name[:-1]
+        draw.text((text_x, cy - font.size * 0.62), name, font=font,
+                  fill=params['ink'] if known else params['muted'])
+        if score_text:
+            draw.text((x + col_w - S(14) - score_w, cy - score_font.size * 0.62), score_text, font=score_font,
+                      fill=params['accent'] if won else params['ink'])
+
+
+def render_placement(canvas, params, margin, matches):
+    """Матчи за 5-е и следующие места: карточки по порядку мест, у каждой своя подпись."""
+    draw = ImageDraw.Draw(canvas)
+    S = lambda value: post_scale(params, value)
+    top = params['content_top']
+    title = params.get('title') or 'Матчи за места'
+    title_font = fit_text_font(draw, title, canvas.width - margin * 2, S(56), params['font'], 750, minimum=S(30))
+    draw.text((margin, top), title, font=title_font, fill=params['ink'])
+    top += int(title_font.size * 1.45)
+
+    def first_place(match):
+        found = re.search(r'\d+', match.label or '')
+        return int(found.group()) if found else 999
+
+    matches = sorted(matches, key=lambda m: (first_place(m), m.round_no or 0, m.id))
+    cols = 1 if len(matches) <= 3 else (3 if canvas.width > canvas.height * 1.3 and len(matches) > 4 else 2)
+    rows = -(-len(matches) // cols)
+    gap = S(18)
+    col_w = (canvas.width - margin * 2 - gap * (cols - 1)) / cols
+    space = params['content_bottom'] - top
+    card_h = int(min(space / rows - gap, S(190)))
+    step = card_h + gap
+    # Карточек мало — блок встаёт по центру, а не растягивается по всей высоте.
+    top += max(0, (space - step * rows + gap) / 2)
+    name_size = max(S(14), min(int(card_h * 0.17), S(30)))
+    for index, match in enumerate(matches):
+        col, row = index % cols, index // cols
+        x = margin + col * (col_w + gap)
+        draw_post_match_card(canvas, params, match, x, top + step * row + card_h / 2, col_w, card_h, name_size,
+                             caption=match.label or '')
+
+
 def render_playoff(canvas, params, margin):
     """Сетка плей-офф: раунды колонками, линии к следующему матчу, справа внизу — за 3 место."""
+    if params.get('playoff_part') == 'placement':
+        placement = [m for m in TournamentMatch.query.filter_by(
+            tournament_id=params['tournament'].id, age_group=params.get('age_group') or '',
+            stage=TournamentMatch.STAGE_PLACEMENT).all() if not m.is_bye]
+        if placement:
+            return render_placement(canvas, params, margin, placement)
     draw = ImageDraw.Draw(canvas)
     S = lambda value: post_scale(params, value)
     font_key = params['font']
@@ -9969,43 +10055,7 @@ def render_playoff(canvas, params, margin):
                 else area_top + area_h * (slot + 0.5) / max(1, len(column)) * (widest / rows)
 
     def draw_card(match, x, center_y):
-        y0 = int(center_y - card_h / 2)
-        draw.rounded_rectangle((x, y0, x + col_w, y0 + card_h), radius=S(14), fill=plate)
-        when = match.kickoff_at.strftime('%d.%m, %H:%M') if match.kickoff_at else ''
-        meta_h = 0
-        if when and card_h >= S(90):
-            meta_font = post_font(font_key, max(S(12), int(name_size * 0.72)), 450)
-            draw.text((x + S(14), y0 + S(8)), when, font=meta_font, fill=params['muted'])
-            meta_h = int(meta_font.size * 1.35) + S(4)
-        row_h = (card_h - meta_h - S(10)) / 2
-        logo = int(min(row_h * 0.72, S(44)))
-        for side_index, side in enumerate(('home', 'away')):
-            name, logo_path = post_side_name(match, side)
-            known = entry_known(match, side)
-            cy = int(y0 + meta_h + S(5) + row_h * (side_index + 0.5))
-            text_x = x + S(14)
-            if known:
-                post_logo(canvas, logo_path, (int(x + S(14) + logo / 2), cy), logo, (255, 255, 255))
-                text_x += logo + S(10)
-            score = match.home_score if side == 'home' else match.away_score
-            penalty = match.home_penalty if side == 'home' else match.away_penalty
-            other = match.away_score if side == 'home' else match.home_score
-            played = match.is_played and score is not None
-            other_penalty = match.away_penalty if side == 'home' else match.home_penalty
-            won = played and (score > other or (score == other and penalty is not None
-                                                and penalty > (other_penalty or 0)))
-            score_text = '' if not played else f'{score}' + (f' ({penalty})' if penalty is not None else '')
-            score_font = post_font(font_key, name_size, 750)
-            score_w = draw.textlength(score_text, font=score_font) if score_text else 0
-            room = x + col_w - S(14) - score_w - S(8) - text_x
-            font = fit_text_font(draw, name, room, name_size, font_key, 700 if won else 500, minimum=max(S(10), 10))
-            while name and draw.textlength(name, font=font) > room:
-                name = name[:-1]
-            draw.text((text_x, cy - font.size * 0.62), name, font=font,
-                      fill=params['ink'] if known else params['muted'])
-            if score_text:
-                draw.text((x + col_w - S(14) - score_w, cy - score_font.size * 0.62), score_text, font=score_font,
-                          fill=params['accent'] if won else params['ink'])
+        draw_post_match_card(canvas, params, match, x, center_y, col_w, card_h, name_size)
 
     xs = [margin + index * (col_w + gap_x) for index in range(len(columns))]
     width = max(2, S(3))
@@ -10071,6 +10121,7 @@ def build_post_image(tournament, data):
         'note': data.get('note') or None,
         'eyebrow': data.get('eyebrow') or None,
         'caption': data.get('caption') or None,
+        'playoff_part': data.get('playoff_part') or 'main',
     }
     canvas = post_background(canvas, params, theme_bg)
 
@@ -10144,6 +10195,12 @@ def tournament_post_options_api(tournament_id):
         'groups': [{'id': g.id, 'age_group': g.age_group, 'name': g.name} for g in groups],
         'days': days,
         'awards': awards,
+        'playoff_parts': [{'age_group': age, 'value': part, 'title': title}
+                          for age in age_groups
+                          for part, title, stage in (('main', 'Плей-офф: 1–4 места', TournamentMatch.STAGE_PLAYOFF),
+                                                     ('placement', 'Матчи за 5-е и следующие места',
+                                                      TournamentMatch.STAGE_PLACEMENT))
+                          if any(m.age_group == age and m.stage == stage for m in matches)],
         'dream_formations': {str(size): options for size, options in DREAM_FORMATIONS.items()},
         'dream_teams': {age: normalize_dream(raw) for age, raw in load_dream_teams(tournament).items()},
         'dream_players': dream_player_options(tournament, age_groups),

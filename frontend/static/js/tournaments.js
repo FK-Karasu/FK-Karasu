@@ -2396,6 +2396,10 @@ function studioSourceItems() {
         return (options.groups || []).filter((row) => !age || row.age_group === age)
             .map((row) => ({ value: String(row.id), title: `Группа ${row.name}` }));
     }
+    if (studio.template === 'playoff') {
+        return (options.playoff_parts || []).filter((row) => !age || row.age_group === age)
+            .map((row) => ({ value: row.value, title: row.title }));
+    }
     if (studio.template === 'award') {
         return (options.awards || []).filter((row) => !age || row.age_group === age)
             .map((row) => ({ value: row.code, title: row.title }));
@@ -2408,13 +2412,14 @@ const STUDIO_EMPTY = {
     match: 'В категории пока нет матчей с известными соперниками.',
     standings: 'В категории ещё нет групп — соберите сетку.',
     award: 'Награды категории ещё не присуждены.',
+    playoff: 'В категории ещё нет плей-офф — соберите сетку на вкладке «Турнир».',
 };
 
 function renderStudioSource() {
     renderStudioDream();
     const items = studioSourceItems();
     const field = byId('studioSourceField');
-    const labels = { schedule: 'День', match: 'Матч', standings: 'Группа', award: 'Награда' };
+    const labels = { schedule: 'День', match: 'Матч', standings: 'Группа', award: 'Награда', playoff: 'Что показать' };
     field.hidden = !labels[studio.template];
     const hint = byId('studioSourceHint');
     const empty = studio.template === 'schedule'
@@ -2454,6 +2459,7 @@ function studioPayload() {
     if (studio.template === 'match') payload.match_id = source;
     if (studio.template === 'standings') payload.group_id = source;
     if (studio.template === 'award') payload.award_code = source;
+    if (studio.template === 'playoff') payload.playoff_part = source || 'main';
     if (studio.template === 'dream' && studio.dream) payload.dream = studio.dream;
     return payload;
 }
