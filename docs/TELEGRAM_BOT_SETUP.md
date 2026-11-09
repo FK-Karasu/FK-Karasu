@@ -37,13 +37,13 @@ export TELEGRAM_BOT_TOKEN="ваш_токен_от_BotFather"
 export APP_URL="http://localhost:5000"
 ```
 
-### Для Railway (production):
+### На сервере (production):
 
-1. Откройте ваш проект на Railway
-2. Перейдите в **Variables**
-3. Добавьте переменные:
+1. Откройте Coolify → проект **FK Karasu** → приложение **fk-web**
+2. Перейдите в **Environment Variables**
+3. Проверьте переменные:
    - `TELEGRAM_BOT_TOKEN` = ваш токен от BotFather
-   - `APP_URL` = ваш Railway URL (например: `https://ваш-проект.up.railway.app`)
+   - `APP_URL` = `https://karasu.uz`
 
 ## Шаг 5: Запуск бота
 
@@ -53,18 +53,11 @@ export APP_URL="http://localhost:5000"
 python telegram_bot.py
 ```
 
-### На Railway:
+### На сервере:
 
-1. В Railway создайте **новый сервис** (New Service)
-2. Выберите **Empty Service**
-3. Добавьте команду запуска: `python telegram_bot.py`
-4. Убедитесь, что установлены зависимости в `requirements.txt`
-
-Или добавьте в `Procfile`:
-```
-web: gunicorn app:app
-bot: python telegram_bot.py
-```
+Отдельный сервис не нужен: `start.sh` в Docker-контейнере сам запускает
+`telegram_bot.py` (выключается `RUN_CLIENT_TELEGRAM_BOT=0`) и `owner_telegram_bot.py`
+(если задан `OWNER_TELEGRAM_BOT_TOKEN`). Переменные задаются в Coolify, см. `docs/DEPLOY.md`.
 
 ## Шаг 6: Проверка работы
 

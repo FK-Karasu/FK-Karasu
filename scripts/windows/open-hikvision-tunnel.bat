@@ -3,7 +3,7 @@ title Hikvision tunnel via karasu-bridge
 setlocal
 
 set "BRIDGE_HOST=karasu-bridge"
-set "BRIDGE_IP=100.107.225.34"
+set "BRIDGE_IP=100.92.167.48"
 set "BRIDGE_USER=admina"
 set "ENTRY_LOCAL_PORT=8448"
 set "EXIT_LOCAL_PORT=8447"

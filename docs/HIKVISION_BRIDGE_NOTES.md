@@ -256,12 +256,12 @@ Tailscale-устройство:
 
 - Аккаунт: `Alisher1994`
 - Mini PC: `karasu-bridge`
-- Tailscale IP: `100.107.225.34`
+- Tailscale IP: `100.92.167.48`
 
 Подключение из дома или с любого ноутбука:
 
 ```bash
-ssh admina@100.107.225.34
+ssh admina@100.92.167.48
 ```
 
 На компьютере, с которого подключаемся, обязательно должен быть установлен и включен Tailscale, и вход должен быть выполнен в тот же аккаунт `Alisher1994`.
@@ -274,7 +274,7 @@ ssh admina@100.107.225.34
 
 ```powershell
 tailscale status
-ssh admina@100.107.225.34
+ssh admina@100.92.167.48
 ```
 
 Проверка на mini PC:
@@ -287,8 +287,8 @@ tailscale ip -4
 Ожидаемый вывод:
 
 ```text
-100.107.225.34  karasu-bridge  Alisher1994@  linux  -
-100.107.225.34
+100.92.167.48  karasu-bridge  Alisher1994@  linux  -
+100.92.167.48
 ```
 
 Если Tailscale разлогинился:
@@ -318,7 +318,7 @@ tailscale ip -4
 В проекте есть готовый файл:
 
 ```text
-open-hikvision-tunnel.bat
+scripts/windows/open-hikvision-tunnel.bat
 ```
 
 Запустить его двойным кликом на Windows-ноутбуке, где включен Tailscale. Пока окно `.bat` открыто, в браузере доступны:
@@ -329,7 +329,7 @@ open-hikvision-tunnel.bat
 Если запускать вручную:
 
 ```powershell
-ssh -N -L 8447:192.168.1.7:443 -L 8448:192.168.1.8:443 admina@100.107.225.34
+ssh -N -L 8447:192.168.1.7:443 -L 8448:192.168.1.8:443 admina@100.92.167.48
 ```
 
 Окно SSH/tunnel нужно держать открытым. Закрыли окно - доступ к терминалам через `localhost` пропал.
