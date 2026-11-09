@@ -19461,8 +19461,11 @@ except Exception as e:
 start_access_face_index_prewarm()
 
 # Используем try-except, чтобы ошибка планировщика не валила всё приложение
+# RUN_SCHEDULER=0 — копия сайта (проверка переезда, тесты): без рассылок и автоархива.
 try:
-    if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    if os.environ.get('RUN_SCHEDULER') == '0':
+        print("ℹ️ RUN_SCHEDULER=0. Планировщик не запущен.")
+    elif not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         scheduler = setup_scheduler()
 except Exception as e:
     print(f"⚠️ Не удалось запустить планировщик: {e}")
