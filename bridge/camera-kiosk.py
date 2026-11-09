@@ -21,7 +21,7 @@ from flask import Flask, Response, jsonify
 from PIL import Image, ImageDraw, ImageFont
 
 
-SERVER_URL = os.environ.get('SERVER_URL', 'https://proapp.up.railway.app').rstrip('/')
+SERVER_URL = os.environ.get('SERVER_URL', 'https://karasu.uz').rstrip('/')
 DEVICE_KEY = os.environ.get('DEVICE_INGEST_KEY', '').strip()
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 CONFIG_REFRESH_SECONDS = max(10, int(os.environ.get('CAMERA_CONFIG_REFRESH_SECONDS', '30')))

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export SERVER_URL="https://proapp.up.railway.app"
+export SERVER_URL="https://karasu.uz"
 export DEVICE_INGEST_KEY="PASTE_THE_SAME_BRIDGE_KEY_HERE"
 export CAMERA_KIOSK_PORT="8090"
 

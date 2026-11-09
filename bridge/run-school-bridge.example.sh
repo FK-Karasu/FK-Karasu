@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export SERVER_URL="https://proapp.up.railway.app"
+export SERVER_URL="https://karasu.uz"
 export DEVICE_INGEST_KEY="PASTE_KEY_FROM_SETTINGS"
 export HIK_USER="admin"
 export HIK_PASS="PASTE_HIKVISION_PASSWORD"

@@ -63,7 +63,7 @@ sudo reboot
 ## Что где находится
 
 - Проект: `proAppFootballClub`
-- Railway сайт: `https://proapp.up.railway.app`
+- Сайт: `https://karasu.uz` (домашний сервер, Coolify)
 - GitHub: `https://github.com/Alisher1994/proAppFootballClub`
 - Локальный mini PC hostname: `karasu-bridge`
 - Пользователь SSH: `admina`
