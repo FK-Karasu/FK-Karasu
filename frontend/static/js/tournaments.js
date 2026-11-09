@@ -1986,31 +1986,6 @@ function rosterCardsMarkup(player) {
         '<i class="card-y"></i>'.repeat(Math.min(player.yellow, 5))}${'<i class="card-r"></i>'.repeat(Math.min(player.red, 3))}</span>`;
 }
 
-function rosterReplaceMarkup(player) {
-    // Кандидаты: свободные игроки клуба.
-    const data = catalogState.roster;
-    if (player.replaced_by) return `<span class="roster-flag ok">замена: ${escapeHtml(player.replaced_by)}</span>`;
-    const free = data.players.filter((item) => !item.entry_id && !item.disqualified
-        && item.eligible.includes(player.entry_id));
-    // Новичка, внесённого в клуб, система часто уже сама поставила в эту категорию —
-    // его тоже можно отметить заменой.
-    const inside = data.players.filter((item) => item.entry_id === player.entry_id && !item.disqualified
-        && !item.replaces_id && item.id !== player.id);
-    const candidates = free.concat(inside);
-    const option = (item) => `<option value="${item.id}">${escapeHtml(item.name)}${
-        item.birth_year ? ` · ${item.birth_year}` : ''}</option>`;
-    if (!candidates.length) {
-        return `<button type="button" class="roster-replace empty" data-roster-add-player
-            title="Свободных игроков нет — добавьте нового в клуб">+ Новый игрок на замену</button>`;
-    }
-    return `<select class="roster-replace" data-replace="${player.id}" data-entry="${player.entry_id}"
-        aria-label="Замена для ${escapeHtml(player.name)}">
-        <option value="" selected>Заменить на…</option>
-        ${free.length ? `<optgroup label="Не заявлены">${free.map(option).join('')}</optgroup>` : ''}
-        ${inside.length ? `<optgroup label="Уже в этой категории">${inside.map(option).join('')}</optgroup>` : ''}
-    </select>`;
-}
-
 function rosterPlayerMarkup(player, categories) {
     if (player.disqualified) {
         return `
@@ -2022,7 +1997,7 @@ function rosterPlayerMarkup(player, categories) {
                 <small title="${escapeHtml(player.disqualified_reason)}">Дисквалифицирован: ${escapeHtml(player.disqualified_reason)}</small>
             </span>
             ${rosterCardsMarkup(player)}
-            ${player.entry_id ? rosterReplaceMarkup(player) : ''}
+            ${player.replaced_by ? `<span class="roster-flag ok">замена: ${escapeHtml(player.replaced_by)}</span>` : ''}
         </div>`;
     }
     const meta = [
@@ -2065,13 +2040,11 @@ function renderRoster() {
     const waiting = free;
 
     const summary = byId('rosterSummary');
-    const needReplace = data.players.filter((player) => player.disqualified && player.entry_id && !player.replaced_by);
-    byId('rosterTipYellow').textContent = `${data.rules.yellow_limit || 3} жёлтые = красная.`;
-    if (needReplace.length) {
-        summary.className = 'roster-summary bad';
-        summary.textContent = `Нужна замена: ${needReplace.map((player) => player.name).join(', ')} — `
-            + 'дисквалифицирован(ы) до конца турнира. Выберите замену в списке «Заменить на…» у карточки.';
-    } else if (!data.players.length) {
+    const limit = data.rules.yellow_limit || 3;
+    byId('rosterTipYellow').innerHTML = `<b>${limit} жёлтые = красная.</b> После красной карточки или ${limit}-й жёлтой `
+        + `игрок дисквалифицирован ${escapeHtml(banTermTitle(data.rules.ban_games))}: пока срок не отбыт, `
+        + 'в протокол его не поставить. Срок можно изменить или снять дисквалификацию на вкладке «Награды».';
+    if (!data.players.length) {
         summary.className = 'roster-summary warn';
         summary.textContent = 'В клубе пока нет игроков.';
     } else if (waiting.length) {
@@ -2144,18 +2117,8 @@ function bindRosterModal() {
         onDrop: (el, target) => moveRosterPlayer(el.dataset.member, target.dataset.rosterDrop),
     });
     board.addEventListener('change', (event) => {
-        const replace = event.target.closest('[data-replace]');
-        if (replace && replace.value) {
-            moveRosterPlayer(replace.value, replace.dataset.entry, replace.dataset.replace);
-            return;
-        }
         const select = event.target.closest('[data-move]');
         if (select && select.value !== '__keep') moveRosterPlayer(select.dataset.move, select.value);
-    });
-    board.addEventListener('click', (event) => {
-        if (!event.target.closest('[data-roster-add-player]')) return;
-        closeRosterModal();
-        openTeamDetails(catalogState.rosterTeamId).catch(showPageError);
     });
     byId('rosterOpenTeam').addEventListener('click', () => {
         closeRosterModal();
@@ -2627,7 +2590,7 @@ function protocolSquadMarkup(side, block) {
                     const warn = !out && player.yellow_before >= (catalogState.protocol.yellow_limit || 3) - 1;
                     return `
                     <label class="protocol-player${row ? ' on' : ''}${out ? ' out' : ''}" data-member="${player.id}"
-                        ${out ? `title="Дисквалифицирован: ${escapeHtml(player.disqualified_reason)}. Нужна замена в окне «Состав»."` : ''}
+                        ${out ? `title="Дисквалифицирован: ${escapeHtml(player.disqualified_reason)}. Срок можно изменить на вкладке «Награды»."` : ''}
                         ${warn ? `title="Уже ${player.yellow_before} жёлт. — следующая жёлтая = дисквалификация"` : ''}>
                         <input type="checkbox" data-play ${row ? 'checked' : ''} ${out && !row ? 'disabled' : ''}>
                         <span class="protocol-face"${player.photo_url
@@ -3059,15 +3022,11 @@ function renderDiscipline() {
         if (row.removed) {
             return `<button type="button" class="discipline-fix" data-ban-restore="${escapeHtml(row.key)}">Вернуть</button>`;
         }
-        const replace = row.disqualified && !row.games ? (row.replaced_by
-            ? `<span class="discipline-fix ok">Замена: ${escapeHtml(row.replaced_by)}</span>`
-            : `<button type="button" class="discipline-fix" data-roster-team="${row.team_id}">Заявить замену →</button>`) : '';
         return `
             <span class="discipline-actions">
                 <select data-ban-term="${escapeHtml(row.key)}" aria-label="Срок дисквалификации">${banTermOptions(row.games)}</select>
                 <button type="button" class="discipline-fix" data-ban-remove="${escapeHtml(row.key)}">${
                     row.kind === 'manual' ? 'Удалить' : 'Снять'}</button>
-                ${replace}
             </span>`;
     };
     host.innerHTML = `
