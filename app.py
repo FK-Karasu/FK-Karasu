@@ -6128,7 +6128,20 @@ def tournament_rules(tournament):
     except (TypeError, ValueError):
         yellow_limit = YELLOW_LIMIT_DEFAULT
     return {'allow_play_up': bool(rules.get('allow_play_up')), 'tiebreak': tiebreak,
-            'match_minutes': match_minutes, 'yellow_limit': yellow_limit}
+            'match_minutes': match_minutes, 'yellow_limit': yellow_limit,
+            'ban_games': normalize_ban_games(rules.get('ban_games'))}
+
+
+BAN_GAMES_MAX = 10
+
+
+def normalize_ban_games(value):
+    """Срок дисквалификации: число игр 1–10 или None — до конца турнира."""
+    try:
+        games = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(1, min(BAN_GAMES_MAX, games)) if games > 0 else None
 
 
 def save_tournament_rules(tournament, rules):
@@ -6144,6 +6157,7 @@ def save_tournament_rules(tournament, rules):
         'tiebreak': rules.get('tiebreak') if rules.get('tiebreak') in TIEBREAK_TITLES else current['tiebreak'],
         'match_minutes': rules.get('match_minutes') or current['match_minutes'],
         'yellow_limit': rules.get('yellow_limit') or current['yellow_limit'],
+        'ban_games': normalize_ban_games(rules['ban_games']) if 'ban_games' in rules else current['ban_games'],
     }
     data['_rules'] = merged
     tournament.formats = json.dumps(data, ensure_ascii=False)
@@ -6314,52 +6328,157 @@ def match_short_title(match):
     return ' · '.join(filter(None, [f'{home} — {away}', when]))
 
 
-def discipline_reason_text(state, limit):
-    if not state or not state['disqualified']:
-        return ''
-    if state['reason'] == 'red':
-        return f"красная карточка в матче {state['match_title']}"
-    return f"{limit}-я жёлтая в матче {state['match_title']}"
+def ban_term_text(games):
+    if not games:
+        return 'до конца турнира'
+    word = 'игру' if games % 10 == 1 and games % 100 != 11 else (
+        'игры' if 2 <= games % 10 <= 4 and not 12 <= games % 100 <= 14 else 'игр')
+    return f'на {games} {word}'
+
+
+def ban_reason_text(ban, limit):
+    if ban['kind'] == 'manual':
+        cause = 'решение организатора' + (f": {ban['note']}" if ban.get('note') else '')
+    elif ban['reason'] == 'red':
+        cause = f"красная карточка в матче {ban['match_title']}"
+    else:
+        cause = f"{limit}-я жёлтая в матче {ban['match_title']}"
+    if ban['removed']:
+        return f'{cause} — снята организатором'
+    term = ban_term_text(ban['games'])
+    if ban['games'] and ban['active']:
+        term += f", осталось {ban['left']}"
+    return f'{cause} — {term}'
+
+
+def load_discipline_overrides(tournament):
+    """Решения организатора: срок/снятие автоматических дисквалификаций и ручные."""
+    try:
+        data = json.loads(tournament.formats or '{}')
+    except Exception:
+        data = {}
+    raw = data.get('_discipline') if isinstance(data, dict) else None
+    raw = raw if isinstance(raw, dict) else {}
+    auto = raw.get('auto') if isinstance(raw.get('auto'), dict) else {}
+    manual = [row for row in (raw.get('manual') or []) if isinstance(row, dict)]
+    return {'auto': auto, 'manual': manual}
+
+
+def save_discipline_overrides(tournament, overrides):
+    try:
+        data = json.loads(tournament.formats or '{}')
+    except Exception:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    data['_discipline'] = overrides
+    tournament.formats = json.dumps(data, ensure_ascii=False)
 
 
 def tournament_discipline(tournament, before_match=None):
     """Карточки и дисквалификации игроков турнира.
 
-    Правило: красная карточка или N-я жёлтая (N из настроек, по умолчанию 3) —
-    игрок до конца турнира не играет, команда заявляет замену. С before_match
-    считаются только матчи, сыгранные раньше него: так протокол старого матча
-    можно править, даже если игрока дисквалифицировали позже.
+    Красная карточка или N-я жёлтая (N из настроек) — дисквалификация: на столько
+    игр команды, сколько задано в правилах турнира, или до конца турнира. Организатор
+    может поменять срок, снять её или назначить свою. Жёлтые после дисквалификации
+    на несколько игр считаются заново.
+    С before_match считаются только матчи раньше него: так протокол старого матча
+    можно править, даже если игрока дисквалифицировали позже, а срок «на 2 игры»
+    отсчитывается от матчей, сыгранных до проверяемого.
     """
-    limit = tournament_rules(tournament)['yellow_limit']
+    rules = tournament_rules(tournament)
+    limit = rules['yellow_limit']
+    overrides = load_discipline_overrides(tournament)
     matches = {m.id: m for m in TournamentMatch.query.filter_by(tournament_id=tournament.id).all()}
-    if not matches:
+    if not matches and not overrides['manual']:
         return {}
     cutoff = match_sequence_key(before_match) if before_match else None
     events = TournamentMatchEvent.query.filter(
-        TournamentMatchEvent.match_id.in_(list(matches.keys())),
+        TournamentMatchEvent.match_id.in_(list(matches.keys()) or [0]),
         TournamentMatchEvent.kind == TournamentMatchEvent.KIND_CARD,
         TournamentMatchEvent.member_id.isnot(None)).all()
     events.sort(key=lambda e: (match_sequence_key(matches[e.match_id]), e.minute is None, e.minute or 0, e.id))
     states = {}
+
+    def state_for(member_id, entry_id):
+        return states.setdefault(member_id, {
+            'yellow': 0, 'red': 0, 'disqualified': False, 'reason': None,
+            'match_id': None, 'match_title': '', 'entry_id': entry_id, 'bans': [], '_cycle': 0,
+        })
+
     for event in events:
         match = matches[event.match_id]
         if cutoff is not None and (match.id == before_match.id or match_sequence_key(match) >= cutoff):
             continue
-        state = states.setdefault(event.member_id, {
-            'yellow': 0, 'red': 0, 'disqualified': False, 'reason': None,
-            'match_id': None, 'match_title': '', 'entry_id': event.entry_id,
-        })
+        state = state_for(event.member_id, event.entry_id)
         if event.card == TournamentMatchEvent.CARD_RED:
             state['red'] += 1
             trigger = 'red'
         else:
             state['yellow'] += 1
-            trigger = 'yellows' if state['yellow'] >= limit else None
-        if trigger and not state['disqualified']:
-            state.update(disqualified=True, reason=trigger, match_id=match.id,
-                         match_title=match_short_title(match))
+            state['_cycle'] += 1
+            trigger = 'yellows' if state['_cycle'] >= limit else None
+        if not trigger:
+            continue
+        key = f'{event.member_id}:{match.id}'
+        if any(ban['key'] == f'auto:{key}' for ban in state['bans']):
+            continue
+        games = overrides['auto'][key] if key in overrides['auto'] else rules['ban_games']
+        if trigger == 'yellows':
+            state['_cycle'] = 0
+        state['bans'].append({'key': f'auto:{key}', 'kind': 'auto', 'reason': trigger, 'games': games,
+                              'match_id': match.id, 'match_title': match_short_title(match),
+                              'entry_id': event.entry_id, 'start': match_sequence_key(match),
+                              'removed': games == 0})
+
+    for row in overrides['manual']:
+        try:
+            member_id = int(row.get('member_id'))
+            entry_id = int(row.get('entry_id'))
+        except (TypeError, ValueError):
+            continue
+        after = matches.get(row.get('after_match_id'))
+        start = match_sequence_key(after) if after else None
+        # Назначена позже проверяемого матча — на него не влияет.
+        if cutoff is not None and after and start >= cutoff:
+            continue
+        state = state_for(member_id, entry_id)
+        state['bans'].append({'key': f"manual:{row.get('id')}", 'kind': 'manual', 'reason': 'manual',
+                              'games': normalize_ban_games(row.get('games')), 'note': row.get('note') or '',
+                              'match_id': after.id if after else None, 'match_title': '',
+                              'entry_id': entry_id, 'start': start, 'removed': False})
+
+    # Сколько игр команды прошло после начала дисквалификации.
+    by_entry = {}
+    for match in matches.values():
+        for entry_id in (match.home_entry_id, match.away_entry_id):
+            if entry_id:
+                by_entry.setdefault(entry_id, []).append(match)
     for state in states.values():
-        state['reason_text'] = discipline_reason_text(state, limit)
+        for ban in state['bans']:
+            served = 0
+            for match in by_entry.get(ban['entry_id'], []):
+                key = match_sequence_key(match)
+                if ban['start'] is not None and key <= ban['start']:
+                    continue
+                if cutoff is not None:
+                    served += key < cutoff
+                else:
+                    served += bool(match.is_played)
+            ban['served'] = served
+            ban['left'] = max(0, ban['games'] - served) if ban['games'] else None
+            ban['active'] = not ban['removed'] and (ban['games'] is None or served < ban['games'])
+            ban['text'] = ban_reason_text(ban, limit)
+        active = [ban for ban in state['bans'] if ban['active']]
+        main = active[0] if active else None
+        state.update(disqualified=bool(main),
+                     reason=main['reason'] if main else None,
+                     match_id=main['match_id'] if main else None,
+                     match_title=main['match_title'] if main else '',
+                     ban_games=main['games'] if main else None,
+                     ban_left=main['left'] if main else None)
+        state['reason_text'] = main['text'] if main else ''
+        state.pop('_cycle', None)
     return states
 
 
@@ -6475,7 +6594,7 @@ def tournament_roster_move_api(tournament_id):
         current = TournamentEntryPlayer.query.filter_by(tournament_id=tournament.id, member_id=member.id).first()
         if not current or current.entry_id != entry_id:
             return jsonify({'success': False, 'message':
-                            f'{member.full_name} дисквалифицирован до конца турнира '
+                            f'{member.full_name} дисквалифицирован '
                             f"({discipline[member.id]['reason_text']}) — заявить его нельзя."}), 409
     if replaces_id:
         replaced = db.session.get(TournamentTeamMember, replaces_id)
@@ -8201,8 +8320,8 @@ def tournament_match_protocol_api(match_id):
         if state and state['disqualified']:
             member = db.session.get(TournamentTeamMember, member_id)
             raise ValueError(f"{member.full_name if member else 'Игрок'} дисквалифицирован "
-                             f"({state['reason_text']}) и не может играть до конца турнира. "
-                             'Заявите замену в окне «Состав».')
+                             f"({state['reason_text']}) и не может играть в этом матче. "
+                             'Дисквалификацию можно изменить или снять на вкладке «Награды».')
 
     try:
         goal_count = {'home': 0, 'away': 0}
@@ -8306,8 +8425,8 @@ def tournament_match_protocol_api(match_id):
     for member_id, state in after.items():
         if state['disqualified'] and state['match_id'] == match.id:
             member = db.session.get(TournamentTeamMember, member_id)
-            notices.append(f"{member.full_name if member else 'Игрок'}: {state['reason_text']} — "
-                           'дисквалифицирован до конца турнира. Заявите замену в окне «Состав».')
+            notices.append(f"{member.full_name if member else 'Игрок'} дисквалифицирован: {state['reason_text']}. "
+                           'Срок можно изменить на вкладке «Награды».')
             later = [m for m in TournamentMatch.query.filter_by(tournament_id=tournament.id).all()
                      if match_sequence_key(m) > match_sequence_key(match)
                      and TournamentMatchAppearance.query.filter_by(match_id=m.id, member_id=member_id).first()]
@@ -8548,41 +8667,114 @@ def tournament_players_api(tournament_id):
         'stats': stats,
         'yellow_limit': tournament_rules(tournament)['yellow_limit'],
         'discipline': discipline_rows(tournament, age_group),
+        'discipline_players': discipline_candidates(tournament, age_group),
+        'ban_games': tournament_rules(tournament)['ban_games'],
         'leaders': {kind: leader_rows(stats, kind, 10) for kind in LEADER_KINDS},
         'awards': serialize_awards(tournament, age_group, stats),
     })
 
 
 def discipline_rows(tournament, age_group):
-    """Дисквалифицированные и «на грани» (до лимита осталась одна жёлтая) в категории."""
+    """Дисквалификации категории (действующие и снятые/отбытые) и «на грани» по жёлтым."""
     limit = tournament_rules(tournament)['yellow_limit']
     entries = {e.id: e for e in TournamentEntry.query.filter_by(
         tournament_id=tournament.id, age_group=age_group).all()}
     replacements = replacement_rows(tournament.id)
     rows = []
     for member_id, state in tournament_discipline(tournament).items():
-        entry = entries.get(state['entry_id'])
-        if not entry:
-            continue
-        at_risk = not state['disqualified'] and state['yellow'] == limit - 1
-        if not state['disqualified'] and not at_risk:
-            continue
         member = db.session.get(TournamentTeamMember, member_id)
         replacement = replacements.get(member_id)
-        rows.append({
-            'member_id': member_id,
-            'name': member.full_name if member else '—',
-            'team_id': entry.team_id,
-            'team_name': entry.team.name if entry.team else '—',
-            'yellow': state['yellow'],
-            'red': state['red'],
-            'disqualified': state['disqualified'],
-            'at_risk': at_risk,
-            'reason': state['reason_text'],
-            'replaced_by': replacement.member.full_name if replacement and replacement.member else None,
-        })
-    rows.sort(key=lambda r: (not r['disqualified'], r['team_name'], r['name']))
+        base = {'member_id': member_id, 'name': member.full_name if member else '—',
+                'yellow': state['yellow'], 'red': state['red'],
+                'replaced_by': replacement.member.full_name if replacement and replacement.member else None}
+        for ban in state['bans']:
+            entry = entries.get(ban['entry_id'])
+            if not entry:
+                continue
+            rows.append({**base, 'key': ban['key'], 'kind': ban['kind'], 'team_id': entry.team_id,
+                         'team_name': entry.team.name if entry.team else '—',
+                         'disqualified': ban['active'], 'removed': ban['removed'],
+                         'served': not ban['active'] and not ban['removed'],
+                         'games': ban['games'], 'left': ban['left'], 'at_risk': False,
+                         'reason': ban['text']})
+        entry = entries.get(state['entry_id'])
+        cycle_left = state['yellow'] % limit if limit else 0
+        if entry and not state['disqualified'] and cycle_left == limit - 1:
+            rows.append({**base, 'key': f'risk:{member_id}', 'kind': 'risk', 'team_id': entry.team_id,
+                         'team_name': entry.team.name if entry.team else '—', 'disqualified': False,
+                         'removed': False, 'served': False, 'games': None, 'left': None,
+                         'at_risk': True, 'reason': ''})
+    order = lambda r: (0 if r['disqualified'] else 1 if r['at_risk'] else 2, r['team_name'], r['name'])
+    rows.sort(key=order)
     return rows
+
+
+def discipline_candidates(tournament, age_group):
+    """Игроки категории для ручной дисквалификации."""
+    out = []
+    for entry in confirmed_entries(tournament.id, age_group):
+        for member in entry_squad(entry):
+            out.append({'member_id': member.id, 'entry_id': entry.id,
+                        'name': ' '.join(filter(None, [member.last_name, member.first_name])),
+                        'number': member.team_number, 'team_name': entry.team.name if entry.team else ''})
+    out.sort(key=lambda r: (r['team_name'].lower(), r['name'].lower()))
+    return out
+
+
+@app.route('/api/tournaments/<int:tournament_id>/discipline', methods=['POST', 'PUT', 'DELETE'])
+@login_required
+def tournament_discipline_api(tournament_id):
+    """Организатор меняет срок, снимает или назначает дисквалификацию."""
+    ensure_tournament_tables()
+    if not has_tournament_permission('edit'):
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    tournament = Tournament.query.filter_by(id=tournament_id).first_or_404()
+    data = request.get_json() or {}
+    overrides = load_discipline_overrides(tournament)
+
+    if request.method == 'POST':
+        try:
+            member_id = int(data.get('member_id'))
+            entry_id = int(data.get('entry_id'))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Выберите игрока'}), 400
+        entry = db.session.get(TournamentEntry, entry_id)
+        if not entry or entry.tournament_id != tournament.id \
+                or member_id not in {m.id for m in entry_squad(entry)}:
+            return jsonify({'success': False, 'message': 'Игрок не из этой заявки'}), 400
+        # Срок считается с ближайшего матча команды: уже сыгранные не трогаем.
+        played = [m for m in TournamentMatch.query.filter(
+            TournamentMatch.tournament_id == tournament.id,
+            or_(TournamentMatch.home_entry_id == entry_id, TournamentMatch.away_entry_id == entry_id)).all()
+            if m.is_played]
+        last = max(played, key=match_sequence_key) if played else None
+        overrides['manual'].append({
+            'id': uuid.uuid4().hex[:10], 'member_id': member_id, 'entry_id': entry_id,
+            'games': normalize_ban_games(data.get('games')),
+            'note': (data.get('note') or '').strip()[:120],
+            'after_match_id': last.id if last else None,
+        })
+    else:
+        key = str(data.get('key') or '')
+        kind, _, ident = key.partition(':')
+        if kind == 'manual':
+            rows = [row for row in overrides['manual'] if str(row.get('id')) != ident]
+            if len(rows) == len(overrides['manual']):
+                return jsonify({'success': False, 'message': 'Дисквалификация не найдена'}), 404
+            if request.method == 'PUT':
+                for row in overrides['manual']:
+                    if str(row.get('id')) == ident:
+                        row['games'] = normalize_ban_games(data.get('games'))
+            else:
+                overrides['manual'] = rows
+        elif kind == 'auto' and ident:
+            # DELETE — снять (0), PUT — новый срок; null — до конца турнира.
+            overrides['auto'][ident] = 0 if request.method == 'DELETE' else normalize_ban_games(data.get('games'))
+        else:
+            return jsonify({'success': False, 'message': 'Дисквалификация не найдена'}), 404
+    save_discipline_overrides(tournament, overrides)
+    db.session.commit()
+    return jsonify({'success': True})
 
 
 # ===== ЛИДЕРЫ: бомбардиры, ассистенты, гол+пас =====

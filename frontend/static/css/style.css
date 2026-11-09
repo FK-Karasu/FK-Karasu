@@ -18970,3 +18970,56 @@ body .tournament-catalog-modal .modal-content {
     max-width: 100%;
 }
 
+
+/* Дисквалификации: срок, снятие, ручное добавление. */
+.discipline-row.done { opacity: .7; }
+.discipline-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+#tournamentEntriesModal .discipline-actions select,
+#tournamentEntriesModal .discipline-add select,
+#tournamentEntriesModal .discipline-add input {
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 10px !important;
+    border: 1px solid #e4e0dc !important;
+    border-radius: 999px !important;
+    background: #fff !important;
+    font-size: 12.5px !important;
+}
+
+.discipline-add {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 12px 14px;
+    border: 1px dashed #e4e0dc;
+    border-radius: 12px;
+}
+
+.discipline-add strong { flex: 1 0 100%; font-size: 13px; }
+.discipline-add select[name="player"] { flex: 1 1 220px; min-width: 0; }
+.discipline-add input { flex: 1 1 160px; min-width: 0; }
+
+@media (max-width: 680px) {
+    .discipline-row { grid-template-columns: auto minmax(0, 1fr); }
+    .discipline-row .discipline-state,
+    .discipline-actions { grid-column: 1 / -1; justify-content: flex-start; }
+}
+
+#tournamentEntriesModal .discipline-actions select,
+#tournamentEntriesModal .discipline-add select[name="games"] {
+    width: auto !important;
+    flex: 0 0 auto;
+}
+
+#tournamentEntriesModal .discipline-add select[name="player"] { width: auto !important; flex: 2 1 240px; }
+#tournamentEntriesModal .discipline-add input { width: auto !important; flex: 1 1 180px; }
+@media (min-width: 681px) { .discipline-actions { flex-wrap: nowrap; } }

@@ -1682,6 +1682,9 @@ function renderTiebreak() {
             <select data-yellow-limit aria-label="Сколько жёлтых карточек равно красной">
                 ${[2, 3, 4, 5].map((value) => `<option value="${value}" ${value === limit ? 'selected' : ''}>${value} жёлтые = красная</option>`).join('')}
             </select>
+            <select data-ban-games aria-label="На сколько игр дисквалификация">
+                ${banTermOptions(data?.rules?.ban_games ?? null)}
+            </select>
             <i class="tiebreak-help" aria-hidden="true">?</i>
         </label>`;
     // В олимпийской системе таблиц нет — правило не нужно.
@@ -1725,6 +1728,30 @@ async function setTiebreak(key) {
         await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/rules`, {
             method: 'PUT',
             body: JSON.stringify({ tiebreak: key }),
+        });
+        await loadCategory();
+    } catch (error) {
+        showPageError(error);
+    }
+}
+
+const BAN_TERMS = [1, 2, 3, 4, 5];
+
+function banTermTitle(games) {
+    if (!games) return 'до конца турнира';
+    return `на ${games} ${games === 1 ? 'игру' : games < 5 ? 'игры' : 'игр'}`;
+}
+
+function banTermOptions(selected) {
+    return [...BAN_TERMS, null].map((games) => `<option value="${games ?? ''}" ${
+        (games ?? null) === (selected ?? null) ? 'selected' : ''}>${banTermTitle(games)}</option>`).join('');
+}
+
+async function setBanGames(value) {
+    try {
+        await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/rules`, {
+            method: 'PUT',
+            body: JSON.stringify({ ban_games: value }),
         });
         await loadCategory();
     } catch (error) {
@@ -3015,27 +3042,76 @@ function renderDiscipline() {
     const host = byId('disciplineBoard');
     if (!host) return;
     const data = catalogState.discipline;
-    if (!data || !data.rows.length) { host.innerHTML = ''; return; }
+    if (!data) { host.innerHTML = ''; return; }
+    const byTeam = new Map();
+    (data.players || []).forEach((player) => {
+        if (!byTeam.has(player.team_name)) byTeam.set(player.team_name, []);
+        byTeam.get(player.team_name).push(player);
+    });
+    const rowState = (row) => {
+        if (row.at_risk) return `<b>На грани</b><small>ещё одна жёлтая — и дисквалификация ${escapeHtml(banTermTitle(data.banGames))}</small>`;
+        if (row.removed) return `<b>Снята</b><small>${escapeHtml(row.reason)}</small>`;
+        if (row.served) return `<b>Отбыл</b><small>${escapeHtml(row.reason)}</small>`;
+        return `<b>Дисквалифицирован</b><small>${escapeHtml(row.reason)}</small>`;
+    };
+    const rowActions = (row) => {
+        if (row.at_risk) return '';
+        if (row.removed) {
+            return `<button type="button" class="discipline-fix" data-ban-restore="${escapeHtml(row.key)}">Вернуть</button>`;
+        }
+        const replace = row.disqualified && !row.games ? (row.replaced_by
+            ? `<span class="discipline-fix ok">Замена: ${escapeHtml(row.replaced_by)}</span>`
+            : `<button type="button" class="discipline-fix" data-roster-team="${row.team_id}">Заявить замену →</button>`) : '';
+        return `
+            <span class="discipline-actions">
+                <select data-ban-term="${escapeHtml(row.key)}" aria-label="Срок дисквалификации">${banTermOptions(row.games)}</select>
+                <button type="button" class="discipline-fix" data-ban-remove="${escapeHtml(row.key)}">${
+                    row.kind === 'manual' ? 'Удалить' : 'Снять'}</button>
+                ${replace}
+            </span>`;
+    };
     host.innerHTML = `
         <section class="stat-block discipline-block">
             <h3>Дисквалификации</h3>
-            <p class="coach-hint">Красная карточка или ${data.limit}-я жёлтая за турнир — игрок до конца турнира не играет.
-                Замену тренер заявляет в окне «Состав» команды (кнопка с числом игроков на вкладке «Участники»).</p>
+            <p class="coach-hint">Красная карточка или ${data.limit}-я жёлтая — дисквалификация
+                ${escapeHtml(banTermTitle(data.banGames))} (правило меняется на вкладке «Турнир»). Срок считается в играх
+                команды. У каждой дисквалификации срок можно изменить или снять её; свою можно добавить ниже.</p>
             <div class="discipline-list">
                 ${data.rows.map((row) => `
-                    <div class="discipline-row${row.disqualified ? ' out' : ' risk'}">
+                    <div class="discipline-row${row.disqualified ? ' out' : row.at_risk ? ' risk' : ' done'}">
                         <span class="discipline-cards">${'<i class="card-y"></i>'.repeat(Math.min(row.yellow, 5))}${'<i class="card-r"></i>'.repeat(Math.min(row.red, 3))}</span>
                         <span class="discipline-who"><strong>${escapeHtml(row.name)}</strong>
                             <small>${escapeHtml(row.team_name)}</small></span>
-                        <span class="discipline-state">${row.disqualified
-                            ? `<b>Дисквалифицирован</b><small>${escapeHtml(row.reason)}</small>`
-                            : `<b>На грани</b><small>ещё одна жёлтая — и пропустит остаток турнира</small>`}</span>
-                        ${row.disqualified ? (row.replaced_by
-                            ? `<span class="discipline-fix ok">Замена: ${escapeHtml(row.replaced_by)}</span>`
-                            : `<button type="button" class="discipline-fix" data-roster-team="${row.team_id}">Заявить замену →</button>`) : ''}
-                    </div>`).join('')}
+                        <span class="discipline-state">${rowState(row)}</span>
+                        ${rowActions(row)}
+                    </div>`).join('') || '<p class="coach-hint">Дисквалификаций нет.</p>'}
             </div>
+            <form class="discipline-add" id="disciplineAddForm">
+                <strong>Добавить дисквалификацию</strong>
+                <select name="player" required aria-label="Игрок">
+                    <option value="">— игрок —</option>
+                    ${[...byTeam.entries()].map(([team, list]) => `<optgroup label="${escapeHtml(team)}">${list.map((player) =>
+                        `<option value="${player.member_id}:${player.entry_id}">${escapeHtml(player.name)}${
+                            player.number ? ` №${escapeHtml(player.number)}` : ''}</option>`).join('')}</optgroup>`).join('')}
+                </select>
+                <select name="games" aria-label="Срок">${banTermOptions(1)}</select>
+                <input name="note" maxlength="120" placeholder="Причина (необязательно)">
+                <button type="submit" class="discipline-fix">Добавить</button>
+            </form>
         </section>`;
+}
+
+async function changeDiscipline(method, body) {
+    try {
+        showFormError('playersError');
+        await apiJson(`/api/tournaments/${catalogState.entriesTournamentId}/discipline`, {
+            method,
+            body: JSON.stringify(body),
+        });
+        await loadPlayers();
+    } catch (error) {
+        showFormError('playersError', error.message);
+    }
 }
 
 async function loadPlayers() {
@@ -3057,7 +3133,12 @@ async function loadPlayers() {
         catalogState.playersStats = data.stats;
         catalogState.playersAwards = data.awards || [];
         catalogState.leaders = data.leaders || null;
-        catalogState.discipline = { rows: data.discipline || [], limit: data.yellow_limit || 3 };
+        catalogState.discipline = {
+            rows: data.discipline || [],
+            limit: data.yellow_limit || 3,
+            banGames: data.ban_games ?? null,
+            players: data.discipline_players || [],
+        };
         renderLeaders();
         renderPlayers();
         renderAwards();
@@ -3509,6 +3590,8 @@ function bindEvents() {
         if (select) setTiebreak(select.value);
         const limit = event.target.closest('[data-yellow-limit]');
         if (limit) setYellowLimit(Number(limit.value));
+        const banGames = event.target.closest('[data-ban-games]');
+        if (banGames) setBanGames(banGames.value ? Number(banGames.value) : null);
         const legs = event.target.closest('[data-legs-select]');
         if (legs) setLegs(Number(legs.value));
     });
@@ -3756,6 +3839,34 @@ function bindEvents() {
     byId('disciplineBoard').addEventListener('click', (event) => {
         const roster = event.target.closest('[data-roster-team]');
         if (roster) openRoster(roster.dataset.rosterTeam).catch(showPageError);
+        const remove = event.target.closest('[data-ban-remove]');
+        if (remove) {
+            const manual = remove.dataset.banRemove.startsWith('manual:');
+            if (window.confirm(manual ? 'Удалить эту дисквалификацию?' : 'Снять дисквалификацию? Игрок снова сможет играть.')) {
+                changeDiscipline('DELETE', { key: remove.dataset.banRemove });
+            }
+        }
+        const restore = event.target.closest('[data-ban-restore]');
+        if (restore) {
+            changeDiscipline('PUT', { key: restore.dataset.banRestore, games: catalogState.discipline?.banGames ?? null });
+        }
+    });
+    byId('disciplineBoard').addEventListener('change', (event) => {
+        const term = event.target.closest('[data-ban-term]');
+        if (term) changeDiscipline('PUT', { key: term.dataset.banTerm, games: term.value ? Number(term.value) : null });
+    });
+    byId('disciplineBoard').addEventListener('submit', (event) => {
+        if (event.target.id !== 'disciplineAddForm') return;
+        event.preventDefault();
+        const form = event.target;
+        const [memberId, entryId] = form.player.value.split(':');
+        if (!memberId) return;
+        changeDiscipline('POST', {
+            member_id: Number(memberId),
+            entry_id: Number(entryId),
+            games: form.games.value ? Number(form.games.value) : null,
+            note: form.note.value,
+        });
     });
     byId('entriesList').addEventListener('click', (event) => {
         const confirmButton = event.target.closest('[data-confirm-entry]');
