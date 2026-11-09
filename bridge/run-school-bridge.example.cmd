@@ -1,7 +1,7 @@
 @echo off
 REM Local bridge for Hikvision Face ID terminals.
 
-set SERVER_URL=https://proapp.up.railway.app
+set SERVER_URL=https://karasu.uz
 set DEVICE_INGEST_KEY=PASTE_KEY_FROM_SETTINGS
 set HIK_USER=admin
 set HIK_PASS=PASTE_HIKVISION_PASSWORD

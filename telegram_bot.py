@@ -65,7 +65,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact_keyboard = ReplyKeyboardMarkup(
         [
             [KeyboardButton("📱 Отправить мой номер", request_contact=True)],
-            [KeyboardButton("🌐 Открыть приложение", web_app=WebAppInfo(url="https://proapp.up.railway.app/portal/login"))]
+            [KeyboardButton("🌐 Открыть приложение", web_app=WebAppInfo(url="https://karasu.uz/portal/login"))]
         ],
         resize_keyboard=True
     )
@@ -105,7 +105,7 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 staff_keyboard = ReplyKeyboardMarkup(
                     [
                         [KeyboardButton("📊 Отчет по посещаемости")],
-                        [KeyboardButton("🌐 Открыть приложение", web_app=WebAppInfo(url="https://proapp.up.railway.app/portal/login"))]
+                        [KeyboardButton("🌐 Открыть приложение", web_app=WebAppInfo(url="https://karasu.uz/portal/login"))]
                     ],
                     resize_keyboard=True
                 )
@@ -132,7 +132,7 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 f"✅ Ура! Я нашел тебя, {student_name}!\n\n"
                 f"🔐 <b>Твой доступ к порталу:</b>\n"
-                f"🔗 Ссылка: https://proapp.up.railway.app/portal\n"
+                f"🔗 Ссылка: https://karasu.uz/portal\n"
                 f"👤 Логин: <code>{login}</code>\n"
                 f"🔑 Пароль (код): <code>{code}</code>\n\n"
                 f"Теперь я буду присылать сюда уведомления о занятиях!",
@@ -203,7 +203,7 @@ async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Обработчик команды /app
 async def handle_app(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отправка кнопки для открытия Web App"""
-    keyboard = [[InlineKeyboardButton("🚀 Открыть приложение", web_app=WebAppInfo(url="https://proapp.up.railway.app/portal/login"))]]
+    keyboard = [[InlineKeyboardButton("🚀 Открыть приложение", web_app=WebAppInfo(url="https://karasu.uz/portal/login"))]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Нажмите кнопку ниже, чтобы открыть приложение школы:", reply_markup=reply_markup)
 

@@ -13,7 +13,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const CONFIG = {
-  serverUrl: process.env.SERVER_URL || 'https://proapp.up.railway.app',
+  serverUrl: process.env.SERVER_URL || 'https://karasu.uz',
   deviceKey: process.env.DEVICE_INGEST_KEY || '',
   username: process.env.HIK_USER || 'admin',
   password: process.env.HIK_PASS || '',
