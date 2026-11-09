@@ -8253,7 +8253,9 @@ button.primary:hover {
 .btn-ghost,
 .filter-btn,
 button.secondary,
-button[type="button"]:not(.btn-danger):not(.delete-btn):not(.remove-btn):not(.logout-btn):not(.pitch-icon-button):not(.team-table-team):not(.catalog-filter-button):not(.catalog-menu-action) {
+/* Основные и выбранные кнопки с type="button" не красим в серый: раньше это правило
+   перебивало оранжевые кнопки и выбранные дни недели по всему сайту. */
+button[type="button"]:not(.btn-danger):not(.delete-btn):not(.remove-btn):not(.logout-btn):not(.pitch-icon-button):not(.team-table-team):not(.catalog-filter-button):not(.catalog-menu-action):not(.btn-primary):not(.btn-success):not(.active) {
     background: #f8f7f6 !important;
     border: 1px solid var(--theme-border) !important;
     color: var(--theme-text-primary) !important;

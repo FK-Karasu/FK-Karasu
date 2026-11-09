@@ -162,13 +162,13 @@ async function initSettings() {
         });
     }
 
-    const form = document.getElementById('settingsForm');
-    if (form) {
-        form.addEventListener('submit', async (e) => {
+    document.querySelectorAll('form.settings-form').forEach((settingsForm) => {
+        if (!SETTINGS_FORM_KEYS[settingsForm.id]) return;
+        settingsForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            await saveSettings();
+            await saveSettingsForm(settingsForm);
         });
-    }
+    });
 
     const uploadLogoBtn = document.getElementById('uploadLogoBtn');
     if (uploadLogoBtn) uploadLogoBtn.addEventListener('click', uploadSystemLogo);
@@ -195,40 +195,31 @@ async function initSettings() {
     const resetSquareLogoBtn = document.getElementById('resetSquareLogoBtn');
     if (resetSquareLogoBtn) resetSquareLogoBtn.addEventListener('click', resetSystemSquareLogo);
     attachTemplateTokenButtons();
-
-    const expenseForm = document.getElementById('expenseCategoriesForm');
-    if (expenseForm) {
-        expenseForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            await saveSettings();
+    // Секреты скрыты точками: показываем по кнопке, копируем без показа.
+    document.querySelectorAll('[data-reveal-secret]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const input = document.getElementById(button.dataset.revealSecret);
+            if (!input) return;
+            const hidden = input.type === 'password';
+            input.type = hidden ? 'text' : 'password';
+            button.textContent = hidden ? 'Скрыть' : 'Показать';
         });
-    }
-
-    // Обработчик формы Telegram
-    const telegramForm = document.getElementById('telegramSettingsForm');
-    if (telegramForm) {
-        telegramForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            await saveTelegramSettings();
+    });
+    document.querySelectorAll('[data-copy-secret]').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const input = document.getElementById(button.dataset.copySecret);
+            if (!input?.value) return;
+            try {
+                await navigator.clipboard.writeText(input.value);
+                button.textContent = 'Скопировано';
+                setTimeout(() => { button.textContent = 'Копировать'; }, 1500);
+            } catch (error) {
+                input.type = 'text';
+                input.select();
+            }
         });
-    }
+    });
 
-    // Обработчик формы Камеры
-    const cameraForm = document.getElementById('cameraSettingsForm');
-    if (cameraForm) {
-        cameraForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            await saveCameraSettings();
-        });
-    }
-
-    const hikvisionForm = document.getElementById('hikvisionSettingsForm');
-    if (hikvisionForm) {
-        hikvisionForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            await saveSettings();
-        });
-    }
     const accessBlockDayInput = document.getElementById('access_block_day');
     if (accessBlockDayInput) {
         accessBlockDayInput.addEventListener('change', normalizeAccessBlockDay);
@@ -250,10 +241,9 @@ async function initSettings() {
     if (bridgeStatusRefreshBtn) {
         bridgeStatusRefreshBtn.addEventListener('click', loadBridgeStatus);
     }
-    if (document.getElementById('bridgeStatusBanner')) {
-        loadBridgeStatus();
-        bridgeStatusTimer = setInterval(loadBridgeStatus, 5000);
-    }
+    document.addEventListener('visibilitychange', syncBridgePolling);
+    document.addEventListener('settings:tab-change', syncBridgePolling);
+    syncBridgePolling();
     const bridgePauseBtn = document.getElementById('bridgePauseBtn');
     if (bridgePauseBtn) bridgePauseBtn.addEventListener('click', () => requestBridgeControl(bridgePauseBtn.dataset.action || 'pause'));
     const bridgeStopBtn = document.getElementById('bridgeStopBtn');
@@ -503,13 +493,13 @@ function renderPaymentProviderConfigs() {
     }).join('');
 
     container.querySelectorAll('input, select').forEach((element) => {
-        element.addEventListener('input', () => updateSettingsFormDirtyState(document.getElementById('settingsForm')));
+        element.addEventListener('input', () => updateSettingsFormDirtyState(document.getElementById('integrationsForm')));
         element.addEventListener('change', () => {
             if (element.dataset.paymentField === 'enabled') {
                 const card = element.closest('[data-provider-card]');
                 if (card) card.classList.toggle('is-enabled', element.checked);
             }
-            updateSettingsFormDirtyState(document.getElementById('settingsForm'));
+            updateSettingsFormDirtyState(document.getElementById('integrationsForm'));
         });
     });
     if (window.lucide) window.lucide.createIcons();
@@ -709,29 +699,79 @@ function collectHikvisionDevices() {
     ].filter((device) => device.ip);
 }
 
-async function saveSettings() {
-    const data = gatherAllSettings();
-    if (!data.system_name) {
-        alert('Введите название системы');
+function parseIntOr(raw, fallback) {
+    const value = parseInt(String(raw ?? '').trim(), 10);
+    return Number.isFinite(value) ? value : fallback;
+}
+
+// Какие поля сохраняет каждая форма: вкладка не трогает настройки других вкладок.
+const SETTINGS_FORM_KEYS = {
+    settingsForm: ['system_name', 'working_days', 'work_start_time', 'work_end_time', 'max_groups_per_slot'],
+    paymentsForm: (key) => key === 'block_future_payments' || key === 'expense_categories'
+        || (key.startsWith('payment_') && key !== 'payment_provider_configs'),
+    accessForm: ['access_block_day', 'access_payment_policy', 'access_debt_start_month', 'access_debt_start_year',
+        'access_max_debt_months', 'min_lessons_for_debt', 'auto_archive_after_months'],
+    rewardsSettingsForm: ['rewards_reset_period_months', 'podium_display_count'],
+    telegramSettingsForm: (key) => key.startsWith('telegram_') || key.endsWith('_phone'),
+    hikvisionSettingsForm: (key) => key.startsWith('hikvision_'),
+    cameraSettingsForm: (key) => key === 'rtsp_url' || key.startsWith('camera_'),
+    integrationsForm: ['payment_provider_configs'],
+};
+
+function pickFormSettings(formId, data) {
+    const rule = SETTINGS_FORM_KEYS[formId];
+    const keep = Array.isArray(rule) ? (key) => rule.includes(key) : rule;
+    return Object.fromEntries(Object.entries(data).filter(([key]) => keep(key)));
+}
+
+function setFormSaveState(form, text, kind = '') {
+    const state = form.querySelector('[data-save-state]');
+    if (!state) return;
+    state.textContent = text;
+    state.dataset.kind = kind;
+}
+
+async function saveSettingsForm(form) {
+    const payload = pickFormSettings(form.id, gatherAllSettings());
+    if ('system_name' in payload && !payload.system_name) {
+        setFormSaveState(form, 'Введите название системы', 'error');
+        document.getElementById('system_name')?.focus();
         return;
     }
-
+    const buttons = getSettingsSubmitButtons(form);
+    buttons.forEach((button) => { button.disabled = true; });
+    setFormSaveState(form, 'Сохраняем…');
     try {
         const resp = await fetch('/api/club-settings', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+            body: JSON.stringify(payload)
         });
-        const result = await resp.json();
-        if (result.success) {
-            alert('Настройки сохранены');
-            markSettingsFormsClean();
-        } else {
-            alert('Ошибка: ' + (result.message || 'не удалось сохранить'));
+        const result = await resp.json().catch(() => ({}));
+        if (!resp.ok || !result.success) {
+            updateSettingsFormDirtyState(form);
+            setFormSaveState(form, result.message || 'Не удалось сохранить', 'error');
+            return;
         }
+        markSettingsFormClean(form);
+        setFormSaveState(form, result.sync_queued ? 'Сохранено · терминалы обновятся' : 'Сохранено', 'ok');
     } catch (error) {
         console.error('Ошибка сохранения настроек:', error);
-        alert('Не удалось сохранить настройки');
+        updateSettingsFormDirtyState(form);
+        setFormSaveState(form, 'Нет связи с сервером — попробуйте ещё раз', 'error');
+    }
+}
+
+function syncBridgePolling() {
+    const tabOpen = document.getElementById('hikvision-tab')?.classList.contains('active');
+    const shouldPoll = tabOpen && document.visibilityState === 'visible'
+        && Boolean(document.getElementById('bridgeStatusBanner'));
+    if (shouldPoll && !bridgeStatusTimer) {
+        loadBridgeStatus();
+        bridgeStatusTimer = setInterval(loadBridgeStatus, 5000);
+    } else if (!shouldPoll && bridgeStatusTimer) {
+        clearInterval(bridgeStatusTimer);
+        bridgeStatusTimer = null;
     }
 }
 
@@ -886,6 +926,9 @@ function setSystemLogoPreview(url, isCustom) {
 
     const fileName = document.getElementById('logo_file_name');
     if (fileName && !isCustom) fileName.textContent = '';
+    // Сбрасывать есть что, только пока загружен свой логотип.
+    const reset = document.getElementById('resetLogoBtn');
+    if (reset) { reset.disabled = !isCustom; reset.hidden = !isCustom; }
 
     updateVisibleBrandLogos(url);
 }
@@ -899,6 +942,8 @@ function setSystemSquareLogoPreview(url, isCustom) {
 
     const fileName = document.getElementById('square_logo_file_name');
     if (fileName && !isCustom) fileName.textContent = '';
+    const reset = document.getElementById('resetSquareLogoBtn');
+    if (reset) { reset.disabled = !isCustom; reset.hidden = !isCustom; }
 }
 
 async function uploadSystemLogo() {
@@ -1029,7 +1074,7 @@ function gatherAllSettings() {
         working_days: collectWorkingDays(),
         work_start_time: document.getElementById('work_start_time').value,
         work_end_time: document.getElementById('work_end_time').value,
-        max_groups_per_slot: parseInt(document.getElementById('max_groups_per_slot').value, 10),
+        max_groups_per_slot: parseIntOr(document.getElementById('max_groups_per_slot').value, 1),
         block_future_payments: document.getElementById('block_future_payments').checked,
         access_block_day: normalizeAccessBlockDay(),
         access_payment_policy: accessPaymentPolicy,
@@ -1039,8 +1084,8 @@ function gatherAllSettings() {
         access_debt_start_month: document.getElementById('access_debt_start_month')?.value || null,
         access_debt_start_year: document.getElementById('access_debt_start_year')?.value || null,
         access_max_debt_months: accessMaxDebtMonths,
-        min_lessons_for_debt: parseInt(document.getElementById('min_lessons_for_debt')?.value ?? '4', 10) || 0,
-        auto_archive_after_months: parseInt(document.getElementById('auto_archive_after_months')?.value ?? '0', 10) || 0,
+        min_lessons_for_debt: parseIntOr(document.getElementById('min_lessons_for_debt')?.value, 4),
+        auto_archive_after_months: parseIntOr(document.getElementById('auto_archive_after_months')?.value, 0),
         hikvision_device_key: (document.getElementById('hikvision_device_key')?.value || '').trim(),
         hikvision_devices: collectHikvisionDevices(),
         rewards_reset_period_months: parseInt(document.getElementById('rewards_reset_period_months').value, 10),
@@ -1083,53 +1128,6 @@ function gatherAllSettings() {
         payment_provider_configs: collectPaymentProviderConfigs(),
         expense_categories: expenseCategories
     };
-}
-
-async function saveTelegramSettings() {
-    const data = gatherAllSettings();
-    try {
-        const resp = await fetch('/api/club-settings', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-
-        const result = await resp.json();
-        if (result.success) {
-            alert('Настройки Telegram сохранены!');
-            markSettingsFormsClean();
-        } else {
-            alert('Ошибка: ' + (result.message || 'Не удалось сохранить настройки'));
-        }
-    } catch (error) {
-        console.error('Ошибка сохранения настроек Telegram:', error);
-        alert('Не удалось сохранить настройки Telegram');
-    }
-}
-
-async function saveCameraSettings() {
-    const data = gatherAllSettings();
-    try {
-        const resp = await fetch('/api/club-settings', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-
-        const result = await resp.json();
-        if (result.success) {
-            const enabled = document.getElementById('camera_kiosk_enabled')?.checked || false;
-            alert(enabled
-                ? 'Camera-kiosk включён. Bridge заберёт настройки автоматически.'
-                : 'Camera-kiosk выключен. Штатные терминалы и журнал проходов продолжат работать.');
-            markSettingsFormsClean();
-        } else {
-            alert('Ошибка: ' + (result.message || 'Не удалось сохранить настройки'));
-        }
-    } catch (error) {
-        console.error('Ошибка сохранения настроек камеры:', error);
-        alert('Не удалось сохранить настройки камеры');
-    }
 }
 
 function renderExpenseCategories() {
@@ -1182,7 +1180,10 @@ function serializeSettingsForm(form) {
             values.push(`${key}=${el.value}`);
         }
     });
-    if (form.id === 'expenseCategoriesForm') {
+    if (form.querySelector('#working-days')) {
+        values.push(`working_days=${collectWorkingDays().join(',')}`);
+    }
+    if (form.querySelector('#expense-categories-list')) {
         values.push(`expenseCategories=${JSON.stringify(expenseCategories)}`);
     }
     return values.join('|');
@@ -1202,17 +1203,16 @@ function updateSettingsFormDirtyState(form) {
     const dirty = serializeSettingsForm(form) !== initial;
     getSettingsSubmitButtons(form).forEach((button) => {
         button.disabled = !dirty;
-        button.style.opacity = dirty ? '' : '0.55';
-        button.style.cursor = dirty ? '' : 'not-allowed';
         button.title = dirty ? '' : 'Нет изменений для сохранения';
     });
+    form.classList.toggle('is-dirty', dirty);
+    if (dirty) setFormSaveState(form, 'Есть несохранённые изменения', 'dirty');
+    else if (form.querySelector('[data-save-state]')?.dataset.kind === 'dirty') setFormSaveState(form, '');
 }
 
-function markSettingsFormsClean() {
-    document.querySelectorAll('.settings-form').forEach((form) => {
-        settingsFormSnapshots.set(form.id || form, serializeSettingsForm(form));
-        updateSettingsFormDirtyState(form);
-    });
+function markSettingsFormClean(form) {
+    settingsFormSnapshots.set(form.id || form, serializeSettingsForm(form));
+    updateSettingsFormDirtyState(form);
 }
 
 function initializeSettingsDirtyTracking() {
@@ -1242,14 +1242,14 @@ function addExpenseCategorySetting() {
     expenseCategories.push(value);
     input.value = '';
     renderExpenseCategories();
-    updateSettingsFormDirtyState(document.getElementById('expenseCategoriesForm'));
+    updateSettingsFormDirtyState(document.getElementById('paymentsForm'));
 }
 
 function removeExpenseCategorySetting(index) {
     if (index < 0 || index >= expenseCategories.length) return;
     expenseCategories.splice(index, 1);
     renderExpenseCategories();
-    updateSettingsFormDirtyState(document.getElementById('expenseCategoriesForm'));
+    updateSettingsFormDirtyState(document.getElementById('paymentsForm'));
 }
 
 window.addExpenseCategorySetting = addExpenseCategorySetting;
@@ -2016,7 +2016,10 @@ function translateReason(reason) {
     if (reason === 'manual') return 'Вручную (UI)';
     if (reason === 'settings_updated') return 'Обновление настроек';
     if (reason === 'startup') return 'Запуск моста';
-    if (reason.startsWith('daily-')) return 'По расписанию (03:00)';
+    if (reason.startsWith('daily-')) {
+        const time = document.getElementById('hikvision_daily_sync_time')?.value;
+        return time ? `По расписанию (${time})` : 'По расписанию';
+    }
     if (reason === 'student_created') return 'Новый ученик';
     if (reason === 'student_updated') return 'Ученик обновлен';
     if (reason === 'student_deleted') return 'Ученик удален';
@@ -2206,8 +2209,10 @@ async function refreshAutoArchivePreview() {
     const hint = document.getElementById('autoArchiveHint');
     const input = document.getElementById('auto_archive_after_months');
     if (!hint || !input) return;
+    const preview = document.getElementById('autoArchivePreview');
     if (!Number(input.value)) {
         hint.dataset.preview = '';
+        if (preview) preview.textContent = '';
         return;
     }
     try {
@@ -2218,7 +2223,6 @@ async function refreshAutoArchivePreview() {
         hint.dataset.preview = data.count
             ? `Сейчас под правило попадают ${data.count} учеников: ${names}${data.count > 5 ? ' и другие' : ''}`
             : 'Сейчас под правило никто не попадает';
-        const preview = document.getElementById('autoArchivePreview');
         if (preview) preview.textContent = hint.dataset.preview;
     } catch (error) {
         console.error('Не удалось получить предпросмотр автоархива:', error);
@@ -2420,7 +2424,11 @@ function renderTerminalMissing() {
     if (!body) return;
     const items = terminalMissingFilteredItems();
     if (!items.length) {
-        body.innerHTML = '<tr><td colspan="9" style="text-align:center; color:var(--theme-text-secondary); padding:20px;">Никого нет — все записаны в терминал.</td></tr>';
+        // Пусто бывает и из-за фильтров — тогда это не «все записаны».
+        const filtered = (data.items || []).length > 0;
+        body.innerHTML = `<tr><td colspan="9" style="text-align:center; color:var(--theme-text-secondary); padding:20px;">${
+            filtered ? 'Под фильтры никто не подходит — сбросьте фильтры.' : 'Никого нет — все записаны в терминал.'}</td></tr>`;
+        updateMissingBulkBar();
         return;
     }
 
@@ -2481,6 +2489,7 @@ function renderTerminalMissing() {
         });
     });
     updateMissingBulkBar();
+    if (window.lucide) window.lucide.createIcons();
 }
 
 function missingSelectableItems() {

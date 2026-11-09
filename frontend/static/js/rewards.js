@@ -1,3 +1,11 @@
+// Безопасный вывод текста в HTML. На странице настроек функция уже есть (settings.js),
+// на отдельных страницах групп/тарифов/вознаграждений — объявляем здесь.
+if (typeof window.escapeHtml !== 'function') {
+    window.escapeHtml = (value) => String(value ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 const rewardEditIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 const rewardTrashIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>';
 
@@ -7,8 +15,9 @@ async function loadRewards() {
         const response = await fetch('/api/rewards');
         if (!response.ok) {
             if (response.status === 403) {
-                alert('Доступ запрещен. Только администратор может управлять вознаграждениями.');
-                window.location.href = '/dashboard';
+                // Без прав на вознаграждения не выкидываем со страницы — просто показываем, почему пусто.
+                const body = document.getElementById('rewardsTableBody');
+                if (body) body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#95a5a6;">Нет прав на просмотр вознаграждений</td></tr>';
                 return;
             }
             throw new Error('Ошибка загрузки вознаграждений');
@@ -25,12 +34,12 @@ async function loadRewards() {
         
         tbody.innerHTML = rewards.map(r => `
             <tr>
-                <td><strong>${r.name}</strong></td>
+                <td><strong>${escapeHtml(r.name)}</strong></td>
                 <td><span style="color: #27ae60; font-weight: bold;">${r.points} балл${r.points === 1 ? '' : r.points < 5 ? 'а' : 'ов'}</span></td>
-                <td>${r.description || '-'}</td>
+                <td>${r.description ? escapeHtml(r.description) : '-'}</td>
                 <td class="action-buttons">
                     <button class="btn-small btn-info edit-reward-btn" data-reward-id="${r.id}" title="Изменить">${rewardEditIcon}</button>
-                    <button class="btn-small btn-danger delete-reward-btn" data-reward-id="${r.id}" data-reward-name="${r.name}" title="Удалить">${rewardTrashIcon}</button>
+                    <button class="btn-small btn-danger delete-reward-btn" data-reward-id="${r.id}" data-reward-name="${escapeHtml(r.name)}" title="Удалить">${rewardTrashIcon}</button>
                 </td>
             </tr>
         `).join('');
@@ -189,9 +198,9 @@ function attachRewardButtons() {
                 
                 if (reward) {
                     document.getElementById('edit_reward_id').value = reward.id;
-                    document.getElementById('edit_name').value = reward.name;
-                    document.getElementById('edit_points').value = reward.points;
-                    document.getElementById('edit_description').value = reward.description || '';
+                    (document.getElementById('edit_reward_name') || document.getElementById('edit_name')).value = reward.name;
+                    (document.getElementById('edit_reward_points') || document.getElementById('edit_points')).value = reward.points;
+                    (document.getElementById('edit_reward_description') || document.getElementById('edit_description')).value = reward.description || '';
                     
                     if (editRewardModal) editRewardModal.style.display = 'block';
                 }
@@ -235,7 +244,7 @@ function attachRewardButtons() {
 // Загрузить вознаграждения при загрузке страницы (только если есть таблица)
 document.addEventListener('DOMContentLoaded', () => {
     const rewardsTableBody = document.getElementById('rewardsTableBody');
-    if (rewardsTableBody) {
+    if (rewardsTableBody && !document.body.classList.contains('settings-page')) {
         loadRewards();
     }
 });

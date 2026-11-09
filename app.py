@@ -13504,7 +13504,7 @@ def camera_kiosk_recognize():
 @app.route('/api/hikvision/open-day', methods=['GET'])
 @login_required
 def get_open_day_state():
-    if current_user.role not in ['admin', 'manager']:
+    if not (can_edit_settings() or current_user.role == 'manager'):
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
     settings = get_club_settings_instance()
     open_until = get_access_open_until(settings)
@@ -13519,7 +13519,7 @@ def get_open_day_state():
 @login_required
 def set_open_day():
     """Пропустить всех: включаем на сегодня и сразу выгружаем список в терминалы."""
-    if current_user.role not in ['admin', 'manager']:
+    if not (can_edit_settings() or current_user.role == 'manager'):
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
 
     ensure_club_settings_columns()
@@ -13571,6 +13571,8 @@ def set_open_day():
 @app.route('/api/hikvision/sync', methods=['POST'])
 @login_required
 def request_hikvision_sync():
+    if not can_edit_settings():
+        return jsonify({'success': False, 'message': 'Нет прав на изменение настроек'}), 403
     ensure_club_settings_columns()
     queue_hikvision_sync('manual')
     db.session.commit()
@@ -13580,7 +13582,7 @@ def request_hikvision_sync():
 @app.route('/api/hikvision/open-door', methods=['POST'])
 @login_required
 def request_hikvision_open_door():
-    if current_user.role not in ['admin']:
+    if not can_edit_settings():
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
 
     data = request.get_json(silent=True) or {}
@@ -13598,7 +13600,7 @@ def request_hikvision_open_door():
 @app.route('/api/hikvision/clear-device', methods=['POST'])
 @login_required
 def request_hikvision_clear_device():
-    if current_user.role not in ['admin']:
+    if not can_edit_settings():
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
 
     data = request.get_json(silent=True) or {}
@@ -13615,7 +13617,7 @@ def request_hikvision_clear_device():
 @app.route('/api/hikvision/bridge/control', methods=['POST'])
 @login_required
 def request_hikvision_bridge_control():
-    if current_user.role not in ['admin']:
+    if not can_edit_settings():
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
 
     data = request.get_json(silent=True) or {}
@@ -13662,7 +13664,7 @@ def update_hikvision_bridge_status():
 @app.route('/api/hikvision/bridge/status', methods=['GET'])
 @login_required
 def get_hikvision_bridge_status():
-    if current_user.role not in ['admin']:
+    if not can_edit_settings():
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
 
     ensure_bridge_status_table()
@@ -13796,7 +13798,7 @@ def collect_last_sync_failures():
 @login_required
 def hikvision_terminal_missing():
     """Кто сейчас НЕ записан в терминалы и почему."""
-    if current_user.role not in ['admin']:
+    if not can_edit_settings():
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
 
     ensure_club_settings_columns()
@@ -14919,7 +14921,7 @@ def redistribute_student_payments(student, settings=None, today=None, actor_id=N
 @login_required
 def bulk_redistribute_payments():
     """Закрыть старые долги уже внесенными деньгами у выбранных учеников."""
-    if current_user.role not in ['admin', 'manager']:
+    if not (can_edit_settings() or current_user.role == 'manager'):
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
 
     data = request.get_json(silent=True) or {}
@@ -14970,7 +14972,7 @@ def bulk_redistribute_payments():
 @login_required
 def bulk_change_tariff():
     """Сменить тариф сразу нескольким ученикам."""
-    if current_user.role not in ['admin', 'manager']:
+    if not (can_edit_settings() or current_user.role == 'manager'):
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
 
     data = request.get_json(silent=True) or {}
@@ -15242,7 +15244,7 @@ def get_student_card_settings():
 @app.route('/api/settings/student-card', methods=['POST'])
 @login_required
 def update_student_card_settings():
-    if current_user.role not in ['admin', 'manager']:
+    if not (can_edit_settings() or current_user.role == 'manager'):
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
 
     ensure_club_settings_columns()
@@ -15263,7 +15265,7 @@ def update_student_card_settings():
 @login_required
 def preview_auto_archive():
     """Кого затронет автоархив, без изменений."""
-    if current_user.role not in ['admin', 'manager']:
+    if not (can_edit_settings() or current_user.role == 'manager'):
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
 
     settings = get_club_settings_instance()
@@ -15285,7 +15287,7 @@ def preview_auto_archive():
 @login_required
 def run_auto_archive_now():
     """Запустить автоархив вручную."""
-    if current_user.role not in ['admin', 'manager']:
+    if not (can_edit_settings() or current_user.role == 'manager'):
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
 
     settings = get_club_settings_instance()
@@ -15313,7 +15315,7 @@ def run_auto_archive_now():
 @login_required
 def archive_student(student_id):
     """Ученик уходит в архив: из терминалов удаляется, данные остаются."""
-    if current_user.role not in ['admin', 'manager']:
+    if not (current_user.has_permission('students', 'edit') or current_user.role == 'manager'):
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
 
     ensure_students_columns()
@@ -15347,7 +15349,7 @@ def archive_student(student_id):
 @login_required
 def restore_student(student_id):
     """Вернуть ученика из архива."""
-    if current_user.role not in ['admin', 'manager']:
+    if not (current_user.has_permission('students', 'edit') or current_user.role == 'manager'):
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
 
     ensure_students_columns()
@@ -15429,7 +15431,7 @@ def hikvision_command_result(command_id):
 @login_required
 def get_hikvision_commands_history():
     """Получить историю команд синхронизации Hikvision"""
-    if current_user.role not in ['admin']:
+    if not can_edit_settings():
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
 
     ensure_device_commands_table()
@@ -15921,7 +15923,8 @@ def get_club_settings():
     ensure_club_settings_columns()
     settings = get_club_settings_instance()
     generated_key = False
-    if not getattr(settings, 'hikvision_device_key', None):
+    editor = can_edit_settings()
+    if editor and not getattr(settings, 'hikvision_device_key', None):
         settings.ensure_hikvision_device_key()
         generated_key = True
     try:
@@ -15946,8 +15949,8 @@ def get_club_settings():
         expense_categories.insert(insert_at, 'Оплата за сайт')
     if generated_key:
         db.session.commit()
-    
-    return jsonify({
+
+    payload = {
         'system_name': settings.system_name or 'FK QORASUV',
         'logo_url': get_system_logo_url(settings),
         'logo_is_custom': bool(getattr(settings, 'logo_path', None)),
@@ -16012,8 +16015,16 @@ def get_club_settings():
         'director_phone': getattr(settings, 'director_phone', '') or '',
         'founder_phone': getattr(settings, 'founder_phone', '') or '',
         'cashier_phone': getattr(settings, 'cashier_phone', '') or '',
-        'expense_categories': expense_categories
-    })
+        'expense_categories': expense_categories,
+        'can_edit': editor,
+    }
+    # Токен бота, ключ моста и ключи касс видит только тот, кто может их менять:
+    # этот же ответ читают страницы финансов и учеников у всех сотрудников.
+    if not editor:
+        for secret in ('telegram_bot_token', 'hikvision_device_key', 'payment_provider_configs',
+                       'director_phone', 'founder_phone', 'cashier_phone'):
+            payload.pop(secret, None)
+    return jsonify(payload)
 
 
 def normalize_payment_provider_configs(raw_configs):
@@ -16113,212 +16124,233 @@ def payment_provider_callback(provider):
     }), 501
 
 
+def can_edit_settings():
+    return current_user.is_authenticated and current_user.has_permission('settings', 'edit')
+
+
+# Поля, от которых зависит допуск в терминалы: их изменение запускает полную сверку.
+HIKVISION_SYNC_SETTING_KEYS = {
+    'access_block_day', 'access_payment_policy', 'access_debt_start_year', 'access_debt_start_month',
+    'access_max_debt_months', 'min_lessons_for_debt', 'hikvision_devices', 'hikvision_device_key',
+    'hikvision_parallel_devices', 'hikvision_cleanup_stale_users', 'hikvision_daily_sync_time',
+}
+PAYMENT_METHOD_KEYS = ('click', 'payme', 'uzum', 'uzcard', 'humo', 'paynet', 'multicard', 'oson', 'transfer')
+PAYMENT_QR_KEYS = ('click', 'payme', 'uzum', 'paynet', 'multicard', 'oson')
+TELEGRAM_TEXT_KEYS = ('telegram_bot_url', 'telegram_notification_template', 'telegram_reward_template',
+                      'telegram_card_template', 'telegram_payment_template', 'rtsp_url')
+CAMERA_INT_LIMITS = {
+    'camera_stream_fps': (30, 1, 60), 'camera_tracking_fps': (30, 1, 60), 'camera_detection_fps': (10, 1, 30),
+    'camera_width': (1920, 320, 3840), 'camera_height': (1080, 240, 2160),
+    'camera_recognition_frames': (3, 1, 10), 'camera_result_hold_seconds': (10, 1, 60),
+    'camera_kiosk_port': (8090, 1024, 65535),
+}
+PHONE_RE = re.compile(r'^\+?[\d\s()-]{7,20}$')
+IPV4_RE = re.compile(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$')
+
+
+class SettingsError(ValueError):
+    pass
+
+
+def settings_int(data, key, minimum, maximum, label):
+    raw = data.get(key)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise SettingsError(f'{label}: введите целое число')
+    if value < minimum or value > maximum:
+        raise SettingsError(f'{label}: от {minimum} до {maximum}')
+    return value
+
+
+def settings_time(data, key, label):
+    raw = (data.get(key) or '').strip()
+    try:
+        return datetime.strptime(raw, '%H:%M').time()
+    except ValueError:
+        raise SettingsError(f'{label}: укажите время в формате ЧЧ:ММ')
+
+
 @app.route('/api/club-settings', methods=['PUT'])
 @login_required
 def update_club_settings():
+    """Сохраняет только присланные поля: вкладка не трогает настройки других вкладок."""
+    if not can_edit_settings():
+        return jsonify({'success': False, 'message': 'Нет прав на изменение настроек'}), 403
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'message': 'Некорректные данные'}), 400
+    ensure_club_settings_columns()
+    settings = get_club_settings_instance()
+    has = lambda key: key in data
+    text = lambda key: (str(data.get(key) or '')).strip()
+    before = {key: getattr(settings, key, None) for key in HIKVISION_SYNC_SETTING_KEYS if key != 'hikvision_devices'}
+    before['hikvision_devices'] = settings.hikvision_devices
     try:
-        data = request.get_json()
-        ensure_club_settings_columns()
-        settings = get_club_settings_instance()
+        if has('system_name'):
+            if not text('system_name'):
+                raise SettingsError('Укажите название системы')
+            settings.system_name = text('system_name')[:200]
 
-        def get_bool_setting(key, default_value):
-            if key in data:
-                return bool(data.get(key))
-            return bool(default_value)
+        if has('working_days'):
+            working_days = parse_days_list(data.get('working_days'))
+            if not working_days:
+                raise SettingsError('Выберите хотя бы один рабочий день')
+            settings.set_working_days_list(working_days)
+        if has('work_start_time'):
+            settings.work_start_time = settings_time(data, 'work_start_time', 'Начало работы')
+        if has('work_end_time'):
+            settings.work_end_time = settings_time(data, 'work_end_time', 'Окончание работы')
+        if (has('work_start_time') or has('work_end_time')) and settings.work_end_time <= settings.work_start_time:
+            raise SettingsError('Время окончания работы должно быть позже начала')
+        if has('max_groups_per_slot'):
+            settings.max_groups_per_slot = settings_int(data, 'max_groups_per_slot', 1, 50, 'Вместимость стадиона')
 
-        def get_str_setting(key, default_value):
-            if key in data:
-                return (data.get(key) or '').strip()
-            return (default_value or '').strip()
+        if has('block_future_payments'):
+            settings.block_future_payments = bool(data.get('block_future_payments'))
+        if has('rewards_reset_period_months'):
+            settings.rewards_reset_period_months = settings_int(
+                data, 'rewards_reset_period_months', 1, 12, 'Период сброса вознаграждений')
+        if has('podium_display_count'):
+            podium = settings_int(data, 'podium_display_count', 5, 50, 'Пьедестал')
+            if podium % 5:
+                raise SettingsError('Пьедестал: число учеников кратно 5')
+            settings.podium_display_count = podium
 
-        system_name = (data.get('system_name') or '').strip() or 'FK QORASUV'
-        working_days = parse_days_list(data.get('working_days'))
-        work_start_time = datetime.strptime(data.get('work_start_time'), '%H:%M').time()
-        work_end_time = datetime.strptime(data.get('work_end_time'), '%H:%M').time()
-        max_groups_per_slot = int(data.get('max_groups_per_slot', 1))
-        block_future_payments = bool(data.get('block_future_payments', False))
-        rewards_reset_period_months = int(data.get('rewards_reset_period_months', 1))
-        podium_display_count = int(data.get('podium_display_count', 20))
-        telegram_bot_url = (data.get('telegram_bot_url') or '').strip()
-        telegram_bot_token = (data.get('telegram_bot_token') or '').strip()
-        telegram_notification_template = (data.get('telegram_notification_template') or '').strip()
-        telegram_reward_template = (data.get('telegram_reward_template') or '').strip()
-        telegram_card_template = (data.get('telegram_card_template') or '').strip()
-        telegram_payment_template = (data.get('telegram_payment_template') or '').strip()
-        rtsp_url = (data.get('rtsp_url') or '').strip()
-        camera_kiosk_enabled = get_bool_setting('camera_kiosk_enabled', getattr(settings, 'camera_kiosk_enabled', False))
-        camera_kiosk_url = get_str_setting('camera_kiosk_url', getattr(settings, 'camera_kiosk_url', '') or '')
+        if has('telegram_bot_token'):
+            token = text('telegram_bot_token')
+            if token and not re.match(r'^\d{5,15}:[A-Za-z0-9_-]{20,}$', token):
+                raise SettingsError('Токен бота выглядит неверно: формат 123456789:ABC…')
+            settings.telegram_bot_token = token or None
+        for key in TELEGRAM_TEXT_KEYS:
+            if has(key):
+                setattr(settings, key, text(key) or None)
+        for key, label in (('director_phone', 'Телефон директора'), ('founder_phone', 'Телефон учредителя'),
+                           ('cashier_phone', 'Телефон кассира')):
+            if has(key):
+                phone = text(key)
+                if phone and not PHONE_RE.match(phone):
+                    raise SettingsError(f'{label}: укажите номер в формате +998…')
+                setattr(settings, key, phone or None)
 
-        def get_camera_int(key, default_value, minimum, maximum):
-            try:
-                value = int(data.get(key, getattr(settings, key, default_value) or default_value))
-            except (TypeError, ValueError):
-                raise ValueError(f'Некорректное значение настройки камеры: {key}')
-            if value < minimum or value > maximum:
-                raise ValueError(f'Настройка камеры {key} должна быть от {minimum} до {maximum}')
-            return value
+        if has('camera_kiosk_enabled'):
+            settings.camera_kiosk_enabled = bool(data.get('camera_kiosk_enabled'))
+        if has('camera_kiosk_url'):
+            kiosk_url = text('camera_kiosk_url')
+            if kiosk_url and not re.match(r'^https?://', kiosk_url, re.IGNORECASE):
+                raise SettingsError('Адрес киоска должен начинаться с http:// или https://')
+            settings.camera_kiosk_url = kiosk_url or None
+        for key, (_, low, high) in CAMERA_INT_LIMITS.items():
+            if has(key):
+                setattr(settings, key, settings_int(data, key, low, high, f'Камера: {key}'))
+        # Отслеживание и распознавание не могут идти чаще самого потока.
+        if any(has(key) for key in ('camera_stream_fps', 'camera_tracking_fps', 'camera_detection_fps')):
+            stream = settings.camera_stream_fps or 30
+            if (settings.camera_tracking_fps or 0) > stream or (settings.camera_detection_fps or 0) > (settings.camera_tracking_fps or stream):
+                raise SettingsError('Камера: FPS отслеживания и распознавания не может быть больше FPS потока')
 
-        camera_stream_fps = get_camera_int('camera_stream_fps', 30, 1, 60)
-        camera_tracking_fps = get_camera_int('camera_tracking_fps', 30, 1, 60)
-        camera_detection_fps = get_camera_int('camera_detection_fps', 10, 1, 30)
-        camera_width = get_camera_int('camera_width', 1920, 320, 3840)
-        camera_height = get_camera_int('camera_height', 1080, 240, 2160)
-        camera_recognition_frames = get_camera_int('camera_recognition_frames', 3, 1, 10)
-        camera_result_hold_seconds = get_camera_int('camera_result_hold_seconds', 10, 1, 60)
-        camera_kiosk_port = get_camera_int('camera_kiosk_port', 8090, 1024, 65535)
-        if camera_kiosk_url and not re.match(r'^https?://', camera_kiosk_url, re.IGNORECASE):
-            return jsonify({'success': False, 'message': 'Адрес киоска должен начинаться с http:// или https://'}), 400
-        payment_click_enabled = get_bool_setting('payment_click_enabled', getattr(settings, 'payment_click_enabled', False))
-        payment_click_qr_url = get_str_setting('payment_click_qr_url', getattr(settings, 'payment_click_qr_url', '') or '')
-        payment_payme_enabled = get_bool_setting('payment_payme_enabled', getattr(settings, 'payment_payme_enabled', False))
-        payment_payme_qr_url = get_str_setting('payment_payme_qr_url', getattr(settings, 'payment_payme_qr_url', '') or '')
-        payment_uzum_enabled = get_bool_setting('payment_uzum_enabled', getattr(settings, 'payment_uzum_enabled', False))
-        payment_uzum_qr_url = get_str_setting('payment_uzum_qr_url', getattr(settings, 'payment_uzum_qr_url', '') or '')
-        payment_uzcard_enabled = get_bool_setting('payment_uzcard_enabled', getattr(settings, 'payment_uzcard_enabled', False))
-        payment_humo_enabled = get_bool_setting('payment_humo_enabled', getattr(settings, 'payment_humo_enabled', False))
-        payment_paynet_enabled = get_bool_setting('payment_paynet_enabled', getattr(settings, 'payment_paynet_enabled', False))
-        payment_paynet_qr_url = get_str_setting('payment_paynet_qr_url', getattr(settings, 'payment_paynet_qr_url', '') or '')
-        payment_multicard_enabled = get_bool_setting('payment_multicard_enabled', getattr(settings, 'payment_multicard_enabled', False))
-        payment_multicard_qr_url = get_str_setting('payment_multicard_qr_url', getattr(settings, 'payment_multicard_qr_url', '') or '')
-        payment_oson_enabled = get_bool_setting('payment_oson_enabled', getattr(settings, 'payment_oson_enabled', False))
-        payment_oson_qr_url = get_str_setting('payment_oson_qr_url', getattr(settings, 'payment_oson_qr_url', '') or '')
-        payment_transfer_enabled = get_bool_setting('payment_transfer_enabled', getattr(settings, 'payment_transfer_enabled', False))
-        payment_provider_configs = normalize_payment_provider_configs(
-            data.get('payment_provider_configs')
-            if 'payment_provider_configs' in data
-            else settings.get_payment_provider_configs()
-        )
-        access_block_day = int(data.get('access_block_day', getattr(settings, 'access_block_day', 10) or 10))
-        access_payment_policy = (data.get('access_payment_policy') or getattr(settings, 'access_payment_policy', '') or 'partial_current_month').strip()
-        hikvision_daily_sync_time = (data.get('hikvision_daily_sync_time') or getattr(settings, 'hikvision_daily_sync_time', '') or '03:00').strip()
-        access_debt_start_year = data.get('access_debt_start_year', getattr(settings, 'access_debt_start_year', None))
-        access_debt_start_month = data.get('access_debt_start_month', getattr(settings, 'access_debt_start_month', None))
-        access_max_debt_months = data.get('access_max_debt_months', getattr(settings, 'access_max_debt_months', 0) or 0)
-        min_lessons_for_debt = data.get('min_lessons_for_debt', getattr(settings, 'min_lessons_for_debt', 4))
-        auto_archive_after_months = data.get('auto_archive_after_months', getattr(settings, 'auto_archive_after_months', 0) or 0)
-        hikvision_device_key = get_str_setting('hikvision_device_key', getattr(settings, 'hikvision_device_key', '') or '')
-        hikvision_devices = data.get('hikvision_devices') if isinstance(data.get('hikvision_devices'), list) else None
-        hikvision_parallel_devices = get_bool_setting('hikvision_parallel_devices', getattr(settings, 'hikvision_parallel_devices', False))
-        hikvision_cleanup_stale_users = get_bool_setting('hikvision_cleanup_stale_users', getattr(settings, 'hikvision_cleanup_stale_users', True))
-        expense_categories = data.get('expense_categories') if isinstance(data.get('expense_categories'), list) else []
-        expense_categories = [str(c).strip() for c in expense_categories if str(c).strip()]
-        # Убираем техническую категорию "Encashment" и "Инкасация" - она не должна храниться в настройках
-        expense_categories = [cat for cat in expense_categories if cat not in ['Encashment', 'Инкасация']]
+        for method in PAYMENT_METHOD_KEYS:
+            key = f'payment_{method}_enabled'
+            if has(key):
+                setattr(settings, key, bool(data.get(key)))
+        for method in PAYMENT_QR_KEYS:
+            key = f'payment_{method}_qr_url'
+            if has(key):
+                url = text(key)
+                if url and not re.match(r'^https?://', url, re.IGNORECASE):
+                    raise SettingsError(f'Ссылка на QR {method}: должна начинаться с https://')
+                setattr(settings, key, url[:500] or None)
+        if has('payment_provider_configs'):
+            settings.set_payment_provider_configs(normalize_payment_provider_configs(data.get('payment_provider_configs')))
 
-        if not working_days:
-            return jsonify({'success': False, 'message': 'Выберите рабочие дни'}), 400
-        if work_end_time <= work_start_time:
-            return jsonify({'success': False, 'message': 'Время окончания должно быть позже начала'}), 400
-        if max_groups_per_slot <= 0:
-            return jsonify({'success': False, 'message': 'Вместимость должна быть положительной'}), 400
-        if rewards_reset_period_months < 1 or rewards_reset_period_months > 12:
-            return jsonify({'success': False, 'message': 'Период сброса вознаграждений должен быть от 1 до 12 месяцев'}), 400
-        if podium_display_count < 5 or podium_display_count > 50 or podium_display_count % 5 != 0:
-            return jsonify({'success': False, 'message': 'Отображение пьедестала должно быть от 5 до 50 учеников с шагом 5'}), 400
-        if access_block_day < 1 or access_block_day > 31:
-            return jsonify({'success': False, 'message': 'День блокировки доступа должен быть от 1 до 31'}), 400
-        if access_payment_policy not in {'full_current_month', 'partial_current_month', 'any_payment_this_month'}:
-            access_payment_policy = 'partial_current_month'
-        if not re.match(r'^\d{2}:\d{2}$', hikvision_daily_sync_time):
-            return jsonify({'success': False, 'message': 'Время синхронизации должно быть в формате HH:MM'}), 400
-        sync_hour, sync_minute = map(int, hikvision_daily_sync_time.split(':'))
-        if sync_hour < 0 or sync_hour > 23 or sync_minute < 0 or sync_minute > 59:
-            return jsonify({'success': False, 'message': 'Некорректное время синхронизации'}), 400
-        if access_debt_start_year in ('', None):
-            access_debt_start_year = None
-        else:
-            access_debt_start_year = int(access_debt_start_year)
-        if access_debt_start_month in ('', None):
-            access_debt_start_month = None
-        else:
-            access_debt_start_month = int(access_debt_start_month)
-        if access_debt_start_month and (access_debt_start_month < 1 or access_debt_start_month > 12):
-            return jsonify({'success': False, 'message': 'Месяц начала контроля доступа должен быть от 1 до 12'}), 400
-        access_max_debt_months = int(access_max_debt_months or 0)
-        if access_payment_policy == 'any_payment_this_month':
-            if access_max_debt_months < 1 or access_max_debt_months > 36:
-                return jsonify({'success': False, 'message': 'Лимит старого долга должен быть от 1 до 36 месяцев'}), 400
-        else:
-            access_max_debt_months = 0
+        if has('access_block_day'):
+            settings.access_block_day = settings_int(data, 'access_block_day', 1, 31, 'День блокировки доступа')
+        if has('access_payment_policy'):
+            policy = text('access_payment_policy')
+            if policy not in {'full_current_month', 'partial_current_month', 'any_payment_this_month'}:
+                raise SettingsError('Неизвестное правило допуска по оплате')
+            settings.access_payment_policy = policy
+        if has('access_max_debt_months'):
+            settings.access_max_debt_months = (
+                settings_int(data, 'access_max_debt_months', 1, 36, 'Лимит старого долга')
+                if (settings.access_payment_policy == 'any_payment_this_month') else 0)
+        if has('access_debt_start_month'):
+            settings.access_debt_start_month = (None if data.get('access_debt_start_month') in ('', None)
+                                                else settings_int(data, 'access_debt_start_month', 1, 12,
+                                                                  'Месяц начала контроля'))
+        if has('access_debt_start_year'):
+            settings.access_debt_start_year = (None if data.get('access_debt_start_year') in ('', None)
+                                               else settings_int(data, 'access_debt_start_year', 2020, 2100,
+                                                                 'Год начала контроля'))
+        if has('min_lessons_for_debt'):
+            settings.min_lessons_for_debt = settings_int(data, 'min_lessons_for_debt', 0, 31,
+                                                         'Со скольких занятий месяц долговой')
+        if has('auto_archive_after_months'):
+            settings.auto_archive_after_months = settings_int(data, 'auto_archive_after_months', 0, 24,
+                                                              'Автоархив')
+        if has('hikvision_daily_sync_time'):
+            settings.hikvision_daily_sync_time = settings_time(
+                data, 'hikvision_daily_sync_time', 'Время полной синхронизации').strftime('%H:%M')
+        if has('hikvision_device_key'):
+            key_value = text('hikvision_device_key')
+            # Пустой ключ раньше молча заменялся новым — и мост в клубе терял связь.
+            if len(key_value) < 16:
+                raise SettingsError('Ключ моста не может быть пустым или короче 16 символов')
+            settings.hikvision_device_key = key_value
+        if has('hikvision_devices'):
+            devices = data.get('hikvision_devices')
+            if not isinstance(devices, list):
+                raise SettingsError('Некорректный список терминалов')
+            for item in devices:
+                ip = str((item or {}).get('ip') or '').strip()
+                match = IPV4_RE.match(ip)
+                if ip and (not match or any(int(part) > 255 for part in match.groups())):
+                    raise SettingsError(f'Терминал: «{ip}» — не IP-адрес (пример 192.168.1.8)')
+                if str((item or {}).get('protocol') or 'https').lower() not in {'http', 'https'}:
+                    raise SettingsError('Терминал: протокол только http или https')
+                try:
+                    port = int((item or {}).get('port') or 443)
+                except (TypeError, ValueError):
+                    port = 0
+                if not 1 <= port <= 65535:
+                    raise SettingsError('Терминал: порт от 1 до 65535')
+            settings.set_hikvision_devices(devices)
+        for key in ('hikvision_parallel_devices', 'hikvision_cleanup_stale_users'):
+            if has(key):
+                setattr(settings, key, bool(data.get(key)))
 
-        settings.system_name = system_name
-        settings.set_working_days_list(working_days)
-        settings.work_start_time = work_start_time
-        settings.work_end_time = work_end_time
-        settings.max_groups_per_slot = max_groups_per_slot
-        settings.block_future_payments = block_future_payments
-        settings.rewards_reset_period_months = rewards_reset_period_months
-        settings.podium_display_count = podium_display_count
-        settings.telegram_bot_url = telegram_bot_url if telegram_bot_url else None
-        settings.telegram_bot_token = telegram_bot_token if telegram_bot_token else None
-        
-        # Сохранение телефонов руководства
-        settings.director_phone = (data.get('director_phone') or '').strip() or None
-        settings.founder_phone = (data.get('founder_phone') or '').strip() or None
-        settings.cashier_phone = (data.get('cashier_phone') or '').strip() or None
-        settings.telegram_notification_template = telegram_notification_template if telegram_notification_template else None
-        settings.telegram_reward_template = telegram_reward_template if telegram_reward_template else None
-        settings.telegram_card_template = telegram_card_template if telegram_card_template else None
-        settings.telegram_payment_template = telegram_payment_template if telegram_payment_template else None
-        settings.rtsp_url = rtsp_url if rtsp_url else None
-        settings.camera_kiosk_enabled = camera_kiosk_enabled
-        settings.camera_kiosk_url = camera_kiosk_url if camera_kiosk_url else None
-        settings.camera_stream_fps = camera_stream_fps
-        settings.camera_tracking_fps = min(camera_tracking_fps, camera_stream_fps)
-        settings.camera_detection_fps = min(camera_detection_fps, camera_tracking_fps, camera_stream_fps)
-        settings.camera_width = camera_width
-        settings.camera_height = camera_height
-        settings.camera_recognition_frames = camera_recognition_frames
-        settings.camera_result_hold_seconds = camera_result_hold_seconds
-        settings.camera_kiosk_port = camera_kiosk_port
-        settings.payment_click_enabled = payment_click_enabled
-        settings.payment_click_qr_url = payment_click_qr_url if payment_click_qr_url else None
-        settings.payment_payme_enabled = payment_payme_enabled
-        settings.payment_payme_qr_url = payment_payme_qr_url if payment_payme_qr_url else None
-        settings.payment_uzum_enabled = payment_uzum_enabled
-        settings.payment_uzum_qr_url = payment_uzum_qr_url if payment_uzum_qr_url else None
-        settings.payment_uzcard_enabled = payment_uzcard_enabled
-        settings.payment_humo_enabled = payment_humo_enabled
-        settings.payment_paynet_enabled = payment_paynet_enabled
-        settings.payment_paynet_qr_url = payment_paynet_qr_url if payment_paynet_qr_url else None
-        settings.payment_multicard_enabled = payment_multicard_enabled
-        settings.payment_multicard_qr_url = payment_multicard_qr_url if payment_multicard_qr_url else None
-        settings.payment_oson_enabled = payment_oson_enabled
-        settings.payment_oson_qr_url = payment_oson_qr_url if payment_oson_qr_url else None
-        settings.payment_transfer_enabled = payment_transfer_enabled
-        settings.set_payment_provider_configs(payment_provider_configs)
-        settings.access_block_day = access_block_day
-        settings.access_payment_policy = access_payment_policy
-        settings.hikvision_daily_sync_time = hikvision_daily_sync_time
-        settings.access_debt_start_year = access_debt_start_year
-        settings.access_debt_start_month = access_debt_start_month
-        settings.access_max_debt_months = access_max_debt_months
-        try:
-            settings.min_lessons_for_debt = max(0, int(min_lessons_for_debt))
-        except (TypeError, ValueError):
-            settings.min_lessons_for_debt = MIN_LESSONS_FOR_DEBT_DEFAULT
-        try:
-            settings.auto_archive_after_months = max(0, int(auto_archive_after_months))
-        except (TypeError, ValueError):
-            settings.auto_archive_after_months = AUTO_ARCHIVE_MONTHS_DEFAULT
-        settings.hikvision_device_key = hikvision_device_key if hikvision_device_key else None
-        settings.hikvision_parallel_devices = hikvision_parallel_devices
-        settings.hikvision_cleanup_stale_users = hikvision_cleanup_stale_users
-        if hikvision_devices is not None:
-            settings.set_hikvision_devices(hikvision_devices)
-        settings.expense_categories = json.dumps(expense_categories) if expense_categories else None
-        queue_hikvision_sync('settings_updated')
-        db.session.commit()
-        reset_brand_cache()
-        return jsonify({'success': True})
-    except Exception as e:
+        if has('expense_categories'):
+            raw = data.get('expense_categories') if isinstance(data.get('expense_categories'), list) else []
+            categories = []
+            for item in raw:
+                name = str(item or '').strip()[:60]
+                if name and name not in ('Encashment', 'Инкасация') and name not in categories:
+                    categories.append(name)
+            settings.expense_categories = json.dumps(categories, ensure_ascii=False)
+    except SettingsError as error:
         db.session.rollback()
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return jsonify({'success': False, 'message': str(error)}), 400
+
+    after = {key: getattr(settings, key, None) for key in HIKVISION_SYNC_SETTING_KEYS if key != 'hikvision_devices'}
+    after['hikvision_devices'] = settings.hikvision_devices
+    sync_queued = any(before[key] != after[key] for key in before)
+    try:
+        if sync_queued:
+            queue_hikvision_sync('settings_updated')
+        db.session.commit()
+    except Exception as error:
+        db.session.rollback()
+        app.logger.exception('club settings save failed')
+        return jsonify({'success': False, 'message': 'Не удалось сохранить настройки, попробуйте ещё раз'}), 500
+    reset_brand_cache()
+    return jsonify({'success': True, 'sync_queued': sync_queued})
 
 
 @app.route('/api/club-settings/logo', methods=['POST'])
 @login_required
 def upload_club_logo():
+    if not can_edit_settings():
+        return jsonify({'success': False, 'message': 'Нет прав на изменение настроек'}), 403
     try:
         ensure_club_settings_columns()
         settings = get_club_settings_instance()
@@ -16364,6 +16396,8 @@ def upload_club_logo():
 @app.route('/api/club-settings/logo', methods=['DELETE'])
 @login_required
 def reset_club_logo():
+    if not can_edit_settings():
+        return jsonify({'success': False, 'message': 'Нет прав на изменение настроек'}), 403
     try:
         ensure_club_settings_columns()
         settings = get_club_settings_instance()
@@ -16395,6 +16429,8 @@ def reset_club_logo():
 @app.route('/api/club-settings/square-logo', methods=['POST'])
 @login_required
 def upload_club_square_logo():
+    if not can_edit_settings():
+        return jsonify({'success': False, 'message': 'Нет прав на изменение настроек'}), 403
     try:
         ensure_club_settings_columns()
         settings = get_club_settings_instance()
@@ -16440,6 +16476,8 @@ def upload_club_square_logo():
 @app.route('/api/club-settings/square-logo', methods=['DELETE'])
 @login_required
 def reset_club_square_logo():
+    if not can_edit_settings():
+        return jsonify({'success': False, 'message': 'Нет прав на изменение настроек'}), 403
     try:
         ensure_club_settings_columns()
         settings = get_club_settings_instance()
@@ -16472,6 +16510,8 @@ def reset_club_square_logo():
 @login_required
 def add_group():
     """Добавить новую группу"""
+    if not current_user.has_permission('groups', 'edit'):
+        return jsonify({'success': False, 'message': 'Нет прав на изменение групп'}), 403
     try:
         ensure_group_trainers_table()
         data = request.get_json()
@@ -16533,6 +16573,8 @@ def add_group():
 @login_required
 def update_group(group_id):
     """Обновить группу"""
+    if not current_user.has_permission('groups', 'edit'):
+        return jsonify({'success': False, 'message': 'Нет прав на изменение групп'}), 403
     try:
         ensure_group_trainers_table()
         group = db.session.get(Group, group_id)
@@ -16602,6 +16644,8 @@ def update_group(group_id):
 @login_required
 def delete_group(group_id):
     """Удалить группу"""
+    if not current_user.has_permission('groups', 'edit'):
+        return jsonify({'success': False, 'message': 'Нет прав на изменение групп'}), 403
     try:
         group = db.session.get(Group, group_id)
         if not group:
@@ -16650,6 +16694,8 @@ def get_tariffs():
 @login_required
 def add_tariff():
     """Добавить новый тариф"""
+    if not current_user.has_permission('tariffs', 'edit'):
+        return jsonify({'success': False, 'message': 'Нет прав на изменение тарифов'}), 403
     try:
         data = request.get_json()
         name = data.get('name')
@@ -16677,6 +16723,8 @@ def add_tariff():
 @login_required
 def update_tariff(tariff_id):
     """Обновить тариф"""
+    if not current_user.has_permission('tariffs', 'edit'):
+        return jsonify({'success': False, 'message': 'Нет прав на изменение тарифов'}), 403
     try:
         tariff = db.session.get(Tariff, tariff_id)
         if not tariff:
@@ -16703,6 +16751,8 @@ def update_tariff(tariff_id):
 @login_required
 def delete_tariff(tariff_id):
     """Удалить (деактивировать) тариф"""
+    if not current_user.has_permission('tariffs', 'edit'):
+        return jsonify({'success': False, 'message': 'Нет прав на изменение тарифов'}), 403
     try:
         tariff = db.session.get(Tariff, tariff_id)
         if not tariff:
@@ -19146,7 +19196,7 @@ def send_payment_reminders_api():
     """
     Ручная отправка напоминаний об оплате (для тестирования или ручного запуска)
     """
-    if current_user.role not in ['admin']:
+    if not can_edit_settings():
         return jsonify({'success': False, 'message': 'Доступ запрещен'}), 403
     
     try:

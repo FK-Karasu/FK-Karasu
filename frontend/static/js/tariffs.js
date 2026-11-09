@@ -1,3 +1,11 @@
+// Безопасный вывод текста в HTML. На странице настроек функция уже есть (settings.js),
+// на отдельных страницах групп/тарифов/вознаграждений — объявляем здесь.
+if (typeof window.escapeHtml !== 'function') {
+    window.escapeHtml = (value) => String(value ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 const tariffEditIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 const tariffTrashIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>';
 
@@ -16,14 +24,14 @@ async function loadTariffs() {
         
         tbody.innerHTML = tariffs.map(t => `
             <tr>
-                <td><strong>${t.name}</strong></td>
+                <td><strong>${escapeHtml(t.name)}</strong></td>
                 <td>${t.lessons_count}</td>
                 <td>${t.price.toLocaleString('ru-RU')} сум</td>
                 <td>${t.price_per_lesson.toLocaleString('ru-RU')} сум</td>
-                <td>${t.description || '-'}</td>
+                <td>${t.description ? escapeHtml(t.description) : '-'}</td>
                 <td class="action-buttons">
                     <button class="btn-small btn-info edit-tariff-btn" data-tariff-id="${t.id}" title="Изменить">${tariffEditIcon}</button>
-                    <button class="btn-small btn-danger delete-tariff-btn" data-tariff-id="${t.id}" data-tariff-name="${t.name}" title="Удалить">${tariffTrashIcon}</button>
+                    <button class="btn-small btn-danger delete-tariff-btn" data-tariff-id="${t.id}" data-tariff-name="${escapeHtml(t.name)}" title="Удалить">${tariffTrashIcon}</button>
                 </td>
             </tr>
         `).join('');
@@ -189,5 +197,5 @@ function attachTariffButtons() {
     });
 }
 
-// Загрузить при открытии страницы
-loadTariffs();
+// Загрузить при открытии страницы (в настройках — при открытии вкладки)
+if (!document.body.classList.contains('settings-page')) loadTariffs();

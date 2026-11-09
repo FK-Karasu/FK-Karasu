@@ -1,3 +1,11 @@
+// Безопасный вывод текста в HTML. На странице настроек функция уже есть (settings.js),
+// на отдельных страницах групп/тарифов/вознаграждений — объявляем здесь.
+if (typeof window.escapeHtml !== 'function') {
+    window.escapeHtml = (value) => String(value ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 const DAY_LABELS = { 1: 'Пн', 2: 'Вт', 3: 'Ср', 4: 'Чт', 5: 'Пт', 6: 'Сб', 7: 'Вс' };
 const groupEditIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 const groupTrashIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>';
@@ -22,6 +30,9 @@ function hasMixedTimes(slots) {
 }
 
 // Функция для форматирования времени группы
+// «17:00:00» → «17:00»: секунды в расписании никому не нужны.
+const trimSeconds = (time) => String(time ?? '').replace(/^(\d{1,2}:\d{2}):\d{2}$/, '$1');
+
 function formatGroupScheduleTime(scheduleTime) {
     if (!scheduleTime) return '—';
     
@@ -30,14 +41,14 @@ function formatGroupScheduleTime(scheduleTime) {
         try {
             const timeMap = JSON.parse(scheduleTime);
             const times = Object.values(timeMap);
-            const uniqueTimes = [...new Set(times)];
+            const uniqueTimes = [...new Set(times.map(trimSeconds))];
             
             if (uniqueTimes.length === 1) {
                 // Все времена одинаковые
                 return uniqueTimes[0];
             } else {
                 // Разные времена - показываем список
-                const entries = Object.entries(timeMap).map(([day, time]) => `${DAY_LABELS[day]} ${time}`);
+                const entries = Object.entries(timeMap).map(([day, time]) => `${DAY_LABELS[day]} ${trimSeconds(time)}`);
                 return entries.join(', ');
             }
         } catch (e) {
@@ -45,7 +56,7 @@ function formatGroupScheduleTime(scheduleTime) {
         }
     }
     
-    return scheduleTime;
+    return trimSeconds(scheduleTime);
 }
 
 function describeDays(days) {
@@ -394,17 +405,17 @@ async function loadGroups() {
             
             return `
             <tr>
-                <td><strong>${group.name}</strong></td>
+                <td><strong>${escapeHtml(group.name)}</strong></td>
                 <td>${group.schedule_days_label || describeDays(group.schedule_days)}</td>
                 <td>${formattedTime}</td>
-                <td><small style="color:#64748b;">${trainerNames}</small></td>
+                <td><small style="color:#64748b;">${escapeHtml(trainerNames)}</small></td>
                 <td>${group.late_threshold}</td>
                 <td>${studentsDisplay}</td>
-                <td>${group.notes || '-'}</td>
+                <td>${group.notes ? escapeHtml(group.notes) : '-'}</td>
                 <td>
-                    <button class="btn-small btn-success" onclick="sendGroupNotification(${group.id}, '${group.name}')" title="Отправить уведомления в Telegram">${groupPhoneIcon}</button>
+                    <button class="btn-small btn-success" data-group-name="${escapeHtml(group.name)}" onclick="sendGroupNotification(${group.id}, this.dataset.groupName)" title="Отправить уведомления в Telegram">${groupPhoneIcon}</button>
                     <button class="btn-small btn-info" onclick="editGroup(${group.id})" title="Редактировать">${groupEditIcon}</button>
-                    <button class="btn-small btn-danger" onclick="deleteGroup(${group.id}, '${group.name}')" title="Удалить">${groupTrashIcon}</button>
+                    <button class="btn-small btn-danger" data-group-name="${escapeHtml(group.name)}" onclick="deleteGroup(${group.id}, this.dataset.groupName)" title="Удалить">${groupTrashIcon}</button>
                 </td>
             </tr>
         `}).join('');
@@ -1240,4 +1251,10 @@ async function sendGroupNotification(groupId, groupName) {
     }
 }
 
-Promise.all([loadClubSettings(), loadTrainers()]).then(loadGroups);
+// На странице настроек группы грузятся при первом открытии вкладки, а не вместе со всей страницей.
+let groupsPageLoad = null;
+window.ensureGroupsLoaded = () => {
+    if (!groupsPageLoad) groupsPageLoad = Promise.all([loadClubSettings(), loadTrainers()]).then(loadGroups);
+    return groupsPageLoad;
+};
+if (!document.body.classList.contains('settings-page')) window.ensureGroupsLoaded();
