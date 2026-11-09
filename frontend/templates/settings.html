@@ -8,7 +8,7 @@
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='uploads/favicon.png') }}">
     {% include '_pwa_head.html' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2026111001">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/settings-page.css') }}?v=2026111001">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/settings-page.css') }}?v=2026111002">
     <script src="{{ url_for('static', filename='vendor/lucide-1.24.0.min.js') }}"></script>
 </head>
 
@@ -21,16 +21,16 @@
             <!-- Верхняя панель с вкладками -->
             <div class="game-top-bar">
 <nav class="settings-tabs" role="tablist" aria-label="Разделы настроек">
-<button type="button" class="settings-tab active" role="tab" data-tab="club"><i data-lucide="building-2"></i> Клуб</button>
-<button type="button" class="settings-tab" role="tab" data-tab="groups"><i data-lucide="users"></i> Группы и тарифы</button>
-<button type="button" class="settings-tab" role="tab" data-tab="payments"><i data-lucide="wallet"></i> Оплата</button>
-<button type="button" class="settings-tab" role="tab" data-tab="access"><i data-lucide="shield-check"></i> Доступ и долги</button>
-<button type="button" class="settings-tab" role="tab" data-tab="rewards"><i data-lucide="trophy"></i> Вознаграждения</button>
-<button type="button" class="settings-tab" role="tab" data-tab="telegram"><i data-lucide="send"></i> Уведомления</button>
-<button type="button" class="settings-tab" role="tab" data-tab="student-card"><i data-lucide="layout-panel-left"></i> Карточка ученика</button>
-<button type="button" class="settings-tab" role="tab" data-tab="hikvision"><i data-lucide="scan-face"></i> Терминалы и камера</button>
-<button type="button" class="settings-tab" role="tab" data-tab="terminal-missing"><i data-lucide="user-x"></i> Не в терминале</button>
-<button type="button" class="settings-tab" role="tab" data-tab="integrations"><i data-lucide="plug"></i> API касс</button>
+<button class="settings-tab active" role="tab" data-tab="club"><i data-lucide="building-2"></i> Клуб</button>
+<button class="settings-tab" role="tab" data-tab="groups"><i data-lucide="users"></i> Группы и тарифы</button>
+<button class="settings-tab" role="tab" data-tab="payments"><i data-lucide="wallet"></i> Оплата</button>
+<button class="settings-tab" role="tab" data-tab="access"><i data-lucide="shield-check"></i> Доступ и долги</button>
+<button class="settings-tab" role="tab" data-tab="rewards"><i data-lucide="trophy"></i> Вознаграждения</button>
+<button class="settings-tab" role="tab" data-tab="telegram"><i data-lucide="send"></i> Уведомления</button>
+<button class="settings-tab" role="tab" data-tab="student-card"><i data-lucide="layout-panel-left"></i> Карточка ученика</button>
+<button class="settings-tab" role="tab" data-tab="hikvision"><i data-lucide="scan-face"></i> Терминалы и камера</button>
+<button class="settings-tab" role="tab" data-tab="terminal-missing"><i data-lucide="user-x"></i> Не в терминале</button>
+<button class="settings-tab" role="tab" data-tab="integrations"><i data-lucide="plug"></i> API касс</button>
 </nav>
             </div>
 

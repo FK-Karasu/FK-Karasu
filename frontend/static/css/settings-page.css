@@ -2632,18 +2632,15 @@ body.theme-light .game-layout,
 
 
 /* ===== Раскладка 2026-11: вкладки по приоритетам, у каждой формы своё сохранение ===== */
-.settings-page .game-top-bar { position: sticky; top: 0; z-index: 20; }
+/* Вкладки как раньше (текст с подчёркиванием), но не обрезаются: лишние листаются вбок. */
 .settings-page .settings-tabs {
-    display: flex !important;
     flex-wrap: nowrap !important;
-    gap: 4px !important;
     overflow-x: auto !important;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
-    scroll-snap-type: x proximity;
 }
 .settings-page .settings-tabs::-webkit-scrollbar { display: none; }
-.settings-page .settings-tab { flex: 0 0 auto !important; white-space: nowrap !important; scroll-snap-align: start; }
+.settings-page .settings-tab { flex-shrink: 0 !important; }
 
 .settings-page .settings-tab-content > .card + .card { margin-top: 20px !important; }
 .settings-page .settings-main-card { max-width: 900px; margin: 0 auto; }
@@ -2699,3 +2696,8 @@ body.theme-light .game-layout,
     border-color: #ffc978 !important;
     color: var(--ui-accent, #ff8a00) !important;
 }
+.settings-page .settings-table-wrap .btn-success.btn-small svg { stroke: currentColor !important; color: inherit !important; }
+
+/* Область вкладок: своя прокрутка и отступы, как было до перестройки. */
+.settings-page .settings-scroll { flex: 1; overflow-y: auto; padding: 24px; }
+@media (max-width: 680px) { .settings-page .settings-scroll { padding: 12px; } }
