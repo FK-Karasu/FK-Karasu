@@ -23,6 +23,7 @@ backend/
 frontend/
   templates/            Jinja-шаблоны страниц
   static/               js, css, картинки, uploads (загруженные фото)
+android/                APK для админов: karasu.uz в приложении (сборка: android/build.sh)
 bridge/                 мост в клубе: Hikvision → karasu.uz (Node), камера-киоск
 models/models/buffalo_s ONNX-модель распознавания лиц (нужна приложению)
 

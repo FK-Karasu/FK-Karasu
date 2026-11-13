@@ -14,3 +14,6 @@ instance/
 # frontend/static/uploads/ (Removed to allow default assets)
 *.db
 *.sqlite3
+
+# Исходники Android-приложения серверу не нужны
+android/

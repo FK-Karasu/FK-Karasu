@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FK Karasu</string>
+    <color name="icon_bg">#FFFFFF</color>
+    <color name="brand">#FF8A00</color>
+    <color name="page_bg">#F4F1EE</color>
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/page_bg</item>
+        <item name="android:statusBarColor">@color/brand</item>
+        <item name="android:colorPrimary">@color/brand</item>
+        <item name="android:colorPrimaryDark">@color/brand</item>
+        <item name="android:colorAccent">@color/brand</item>
+    </style>
+</resources>

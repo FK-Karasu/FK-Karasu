@@ -16,3 +16,6 @@ python -m scripts.maintenance.check_db
 
 Скрипты из `maintenance/` работают с той базой, на которую указывает `DATABASE_URL`.
 Перед запуском на проде сделайте дамп базы.
+
+Android-приложение для админов (обёртка над karasu.uz) лежит в `android/`:
+сборка `android/build.sh`, ключ подписи хранится вне репозитория в `~/.fk-karasu-android/`.
