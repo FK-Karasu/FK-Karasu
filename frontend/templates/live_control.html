@@ -50,7 +50,11 @@
         @keyframes blink { 50% { opacity: .25; } }
 
         .grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-        @media (max-width: 880px) { .grid { grid-template-columns: 1fr; } }
+        @media (max-width: 880px) {
+            .grid { grid-template-columns: 1fr; }
+            /* На телефоне сначала управление матчем, превью и ссылка — ниже. */
+            .grid > .col:last-child { order: -1; }
+        }
         .col { display: grid; gap: 16px; min-width: 0; }
         .card {
             background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px;
@@ -86,9 +90,37 @@
         .btn.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
         .btn.danger { color: var(--red); }
 
-        select.match-select {
-            width: 100%; height: 46px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px;
-            background: #fff; color: var(--ink);
+        .match-pick {
+            width: 100%; min-height: 50px; display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+            border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink);
+            text-align: left; cursor: pointer; font-weight: 650;
+        }
+        .match-pick .txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .match-pick .txt.empty { color: var(--muted); font-weight: 500; }
+        .match-pick .chev { color: var(--muted); flex: none; }
+        .mini-logo {
+            width: 26px; height: 26px; flex: none; border-radius: 50%; background: #f1eeea center/contain no-repeat;
+            border: 1px solid var(--line);
+        }
+        .search {
+            width: 100%; height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px;
+            background: #faf8f6; font-size: 16px;
+        }
+        .search:focus { outline: 2px solid var(--accent); outline-offset: -1px; background: #fff; }
+        .match-item {
+            width: 100%; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px;
+            padding: 10px 12px; margin-bottom: 6px; border: 1px solid var(--line); border-radius: 12px;
+            background: #fff; cursor: pointer; text-align: left;
+        }
+        .match-item.sel { border-color: var(--accent); background: #fff4e6; }
+        .match-item:disabled { opacity: .45; cursor: default; }
+        .match-item .side { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 700; }
+        .match-item .side.away { flex-direction: row-reverse; text-align: right; }
+        .match-item .side span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .match-item .mid { text-align: center; font-weight: 850; font-variant-numeric: tabular-nums; font-size: 17px; }
+        .match-item .sub {
+            grid-column: 1 / -1; text-align: center; font-size: 12px; font-weight: 600; color: var(--muted);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .scoreline {
             display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px;
@@ -229,39 +261,26 @@
                 </div>
                 <p class="hint">
                     OBS → «Источники» → <b>+</b> → <b>Браузер</b> → вставить ссылку,
-                    ширина и высота как у трансляции (1920×1080, 2560×1440 или 3840×2160).
+                    ширина и высота как у трансляции (1920×1080, 2560×1440, 3840×2160
+                    или 1080×1920 для вертикального видео).
                     Ссылку не публикуйте: по ней видно табло.
                 </p>
             </section>
 
             <section class="card">
-                <h2>Логотипы в углу</h2>
+                <h2>Логотип в углу</h2>
                 <div class="logo-slot">
                     <div class="img" id="logoPrimaryImg"></div>
-                    <div class="txt"><b>Логотип 1</b><small id="logoPrimaryNote">из настроек клуба</small></div>
-                    <div class="acts">
-                        <button class="btn" type="button" data-logo-upload="primary">Загрузить</button>
-                        <button class="btn danger" type="button" data-logo-delete="primary">Сбросить</button>
-                    </div>
+                    <div class="txt"><b>Логотип клуба</b><small>меняется в настройках клуба</small></div>
                 </div>
-                <div class="logo-slot">
-                    <div class="img" id="logoSecondaryImg"></div>
-                    <div class="txt"><b>Логотип 2</b><small id="logoSecondaryNote">например, KFL KIDS</small></div>
-                    <div class="acts">
-                        <button class="btn" type="button" data-logo-upload="secondary">Загрузить</button>
-                        <button class="btn danger" type="button" data-logo-delete="secondary">Убрать</button>
-                    </div>
-                </div>
-                <label class="switch"><input type="checkbox" id="showLogos"> Показывать логотипы</label>
-                <p class="hint">Лучше PNG с прозрачным фоном. Подходит любой размер, крупный логотип будет чётким и в 4K.</p>
-                <input type="file" id="logoFile" accept="image/*" hidden>
+                <label class="switch"><input type="checkbox" id="showLogos"> Показывать логотип</label>
             </section>
         </div>
 
         <div class="col">
             <section class="card">
                 <h2>Матч в эфире</h2>
-                <select class="match-select" id="matchSelect"></select>
+                <button class="match-pick" type="button" id="matchPick"></button>
                 <div class="scoreline" id="scoreline" hidden></div>
             </section>
 
@@ -391,26 +410,78 @@
     }
     setInterval(() => { if (data) $('clockText').textContent = fmt(elapsedMs()); }, 250);
 
+    function matchTime(m) {
+        if (!m.kickoff_at) return '';
+        const d = new Date(m.kickoff_at);
+        return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('ru-RU',
+            { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
     function renderMatches() {
-        const select = $('matchSelect');
-        const current = data.state.match?.id || '';
-        const key = JSON.stringify([data.matches, current]);
-        if (select.dataset.key === key) return;
-        select.dataset.key = key;
-        const groups = {};
-        for (const m of data.matches) (groups[m.age_group] ||= []).push(m);
-        const time = (m) => {
-            if (!m.kickoff_at) return '';
-            const d = new Date(m.kickoff_at);
-            return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('ru-RU',
-                { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' · ';
-        };
-        const score = (m) => m.home_score != null ? ` (${m.home_score}:${m.away_score})` : '';
-        select.innerHTML = '<option value="">— Выберите матч —</option>' + Object.entries(groups).map(([age, list]) =>
-            `<optgroup label="${esc(age)}">${list.map((m) => `<option value="${m.id}"${m.ready ? '' : ' disabled'}>
-                ${esc(time(m) + m.home + ' — ' + m.away + score(m) + (m.stage_label ? ' · ' + m.stage_label : ''))}
-            </option>`).join('')}</optgroup>`).join('');
-        select.value = String(current);
+        const btn = $('matchPick');
+        const match = data.state.match;
+        const html = match
+            ? `<span class="mini-logo" style="${bg(match.home_team?.logo_url || match.home.team_logo_url)}"></span>
+               <span class="txt">${esc(match.home.team_name)} — ${esc(match.away.team_name)}</span>
+               <span class="mini-logo" style="${bg(match.away_team?.logo_url || match.away.team_logo_url)}"></span>
+               <span class="chev">▾</span>`
+            : '<span class="txt empty">Выберите матч…</span><span class="chev">▾</span>';
+        if (btn.dataset.html !== html) { btn.innerHTML = html; btn.dataset.html = html; }
+    }
+
+    function openMatchPicker() {
+        const current = data.state.match?.id;
+        const collator = new Intl.Collator('ru', { sensitivity: 'base', numeric: true });
+        // По алфавиту: сначала хозяева, потом гости.
+        const all = [...data.matches].sort((a, b) =>
+            collator.compare(a.home, b.home) || collator.compare(a.away, b.away) || a.id - b.id);
+        const backdrop = document.createElement('div');
+        backdrop.className = 'sheet-backdrop';
+        backdrop.innerHTML = `
+            <div class="sheet" role="dialog" aria-modal="true">
+                <div class="sheet-head">
+                    <h3>Матч в эфире</h3>
+                    <input class="search" type="search" id="matchSearch" placeholder="Поиск по команде" autocomplete="off">
+                </div>
+                <div class="sheet-body" id="matchList"></div>
+                <div class="sheet-foot">
+                    <button class="btn" type="button" data-close>Закрыть</button>
+                    ${current ? '<button class="btn danger" type="button" data-clear>Убрать матч</button>' : ''}
+                </div>
+            </div>`;
+        document.body.appendChild(backdrop);
+        const close = () => backdrop.remove();
+        const pick = (id) => { close(); update({ match_id: id }, id ? 'Матч выбран' : 'Матч убран'); };
+
+        function fill() {
+            const q = backdrop.querySelector('#matchSearch').value.trim().toLowerCase();
+            const list = all.filter((m) => !q
+                || `${m.home} ${m.away} ${m.age_group || ''} ${m.stage_label || ''}`.toLowerCase().includes(q));
+            const item = (m) => {
+                const mid = m.home_score != null ? `${m.home_score}:${m.away_score}` : '—';
+                const sub = [m.age_group, m.stage_label, matchTime(m)].filter(Boolean).join(' · ');
+                return `<button class="match-item${m.id === current ? ' sel' : ''}" type="button" data-id="${m.id}"${m.ready ? '' : ' disabled'}>
+                    <span class="side"><span class="mini-logo" style="${bg(m.home_logo)}"></span><span>${esc(m.home)}</span></span>
+                    <span class="mid">${mid}</span>
+                    <span class="side away"><span class="mini-logo" style="${bg(m.away_logo)}"></span><span>${esc(m.away)}</span></span>
+                    ${sub ? `<span class="sub">${esc(sub)}</span>` : ''}
+                </button>`;
+            };
+            backdrop.querySelector('#matchList').innerHTML = list.length
+                ? list.map(item).join('') : '<p class="hint">Ничего не найдено.</p>';
+        }
+        fill();
+        backdrop.querySelector('#matchSearch').addEventListener('input', fill);
+        backdrop.querySelector('#matchList').addEventListener('click', (e) => {
+            const b = e.target.closest('[data-id]');
+            if (b && !b.disabled) pick(Number(b.dataset.id));
+        });
+        backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+        backdrop.querySelector('[data-close]').addEventListener('click', close);
+        backdrop.querySelector('[data-clear]')?.addEventListener('click', () => pick(null));
+        // На компьютере сразу в поиск; на телефоне клавиатура не выскакивает сама.
+        if (matchMedia('(hover: hover)').matches) backdrop.querySelector('#matchSearch').focus();
+        backdrop.querySelector('.match-item.sel')?.scrollIntoView({ block: 'center' });
     }
 
     function renderScoreline() {
@@ -463,7 +534,7 @@
         const st = data.state;
         $('obsUrl').value = data.overlay_url;
         const frame = $('previewFrame');
-        const previewUrl = `${data.overlay_url}&preview=1`;
+        const previewUrl = `${data.overlay_url}?preview=1`;
         if (frame.dataset.src !== previewUrl) { frame.src = previewUrl; frame.dataset.src = previewUrl; }
 
         renderMatches();
@@ -471,7 +542,7 @@
         renderEvents();
 
         document.querySelectorAll('[data-scene]').forEach((b) => b.classList.toggle('active', b.dataset.scene === st.scene));
-        const on = st.scene !== 'hidden' && (st.match || (st.show_logos && (st.logos.primary || st.logos.secondary)));
+        const on = st.scene !== 'hidden' && (st.match || (st.show_logos && st.logos.primary));
         $('liveDot').classList.toggle('on', !!on);
         $('liveDot').textContent = on ? 'Табло в эфире' : 'Табло скрыто';
 
@@ -482,11 +553,6 @@
         if (document.activeElement !== $('halfMinutes')) $('halfMinutes').value = st.clock.half_minutes || '';
 
         $('logoPrimaryImg').style.cssText = bg(st.logos.primary);
-        $('logoSecondaryImg').style.cssText = bg(st.logos.secondary);
-        $('logoPrimaryNote').textContent = st.logos.primary_custom ? 'загружен для трансляции' : 'из настроек клуба';
-        $('logoSecondaryNote').textContent = st.logos.secondary ? 'загружен' : 'не загружен (например, KFL KIDS)';
-        document.querySelector('[data-logo-delete="primary"]').disabled = !st.logos.primary_custom;
-        document.querySelector('[data-logo-delete="secondary"]').disabled = !st.logos.secondary;
         $('showLogos').checked = st.show_logos;
     }
 
@@ -500,7 +566,7 @@
         }
         toast('Ссылка скопирована');
     });
-    $('matchSelect').addEventListener('change', (e) => update({ match_id: e.target.value || null }, 'Матч выбран'));
+    $('matchPick').addEventListener('click', () => { if (data) openMatchPicker(); });
     document.querySelectorAll('[data-scene]').forEach((b) => b.addEventListener('click', () => update({ scene: b.dataset.scene })));
     $('startPause').addEventListener('click', () => update({ clock: data.state.clock.running ? 'pause' : 'start' }));
     document.querySelectorAll('[data-clock]').forEach((b) => b.addEventListener('click', () => {
@@ -511,32 +577,6 @@
         update({ clock: 'adjust', delta_seconds: Number(b.dataset.adjust) })));
     $('halfMinutes').addEventListener('change', (e) => update({ half_minutes: e.target.value || 0 }, 'Сохранено'));
     $('showLogos').addEventListener('change', (e) => update({ show_logos: e.target.checked }));
-
-    let logoSlot = null;
-    document.querySelectorAll('[data-logo-upload]').forEach((b) => b.addEventListener('click', () => {
-        logoSlot = b.dataset.logoUpload;
-        $('logoFile').value = '';
-        $('logoFile').click();
-    }));
-    $('logoFile').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file || !logoSlot) return;
-        const form = new FormData();
-        form.append('logo', file);
-        try {
-            apply(await api(`/api/tournaments/${TID}/live/logo/${logoSlot}`, { method: 'POST', body: form }));
-            toast('Логотип загружен');
-        } catch (error) {
-            toast(error.message, true);
-        }
-    });
-    document.querySelectorAll('[data-logo-delete]').forEach((b) => b.addEventListener('click', async () => {
-        try {
-            apply(await api(`/api/tournaments/${TID}/live/logo/${b.dataset.logoDelete}`, { method: 'DELETE' }));
-        } catch (error) {
-            toast(error.message, true);
-        }
-    }));
 
     // ---------- Гол / карточка: тот же протокол матча, что и в разделе «Турниры» ----------
     async function loadProtocol(matchId) {

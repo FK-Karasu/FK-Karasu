@@ -10491,7 +10491,13 @@ def public_tournament_screen_page(tournament_id):
 # /tournaments/<id>/live. Состояние лежит в tournament.formats['_live'], как и _discipline.
 
 LIVE_SCENES = ('score', 'intro', 'result', 'hidden')
-LIVE_LOGO_SLOTS = ('primary', 'secondary')
+# Код короткой ссылки табло: karasu.uz/tv/<код>. Без похожих символов (0/o, 1/l/i).
+LIVE_CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'
+LIVE_CODE_LENGTH = 8
+
+
+def new_live_code():
+    return ''.join(secrets.choice(LIVE_CODE_ALPHABET) for _ in range(LIVE_CODE_LENGTH))
 
 
 def now_ms():
@@ -10506,9 +10512,10 @@ def load_live_state(tournament):
     raw = data.get('_live') if isinstance(data, dict) else None
     raw = raw if isinstance(raw, dict) else {}
     clock = raw.get('clock') if isinstance(raw.get('clock'), dict) else {}
-    logos = raw.get('logos') if isinstance(raw.get('logos'), dict) else {}
     return {
         'token': raw.get('token') or '',
+        # Длинный ключ первой версии (/live/<id>?key=...), чтобы старая ссылка в OBS не сломалась.
+        'legacy_token': raw.get('legacy_token') or '',
         'match_id': raw.get('match_id'),
         'scene': raw.get('scene') if raw.get('scene') in LIVE_SCENES else 'score',
         'show_logos': raw.get('show_logos', True) is not False,
@@ -10519,7 +10526,6 @@ def load_live_state(tournament):
             'period': int(clock.get('period') or 1),
             'half_minutes': int(clock.get('half_minutes') or 0),
         },
-        'logos': {slot: logos.get(slot) for slot in LIVE_LOGO_SLOTS},
         'version': int(raw.get('version') or 0),
     }
 
@@ -10543,15 +10549,9 @@ def live_clock_elapsed(clock, at_ms=None):
     return elapsed
 
 
-def live_logo_urls(state):
-    primary = get_tournament_media_url(state['logos'].get('primary')) if state['logos'].get('primary') else None
-    if not primary:
-        # По умолчанию — логотип клуба из настроек.
-        primary = get_system_logo_url(get_club_settings_instance())
-    secondary = get_tournament_media_url(state['logos'].get('secondary')) if state['logos'].get('secondary') else None
-    return {'primary': primary, 'secondary': secondary,
-            'primary_custom': bool(state['logos'].get('primary')),
-            'secondary_custom': bool(state['logos'].get('secondary'))}
+def live_logo_urls():
+    # В углу табло — только логотип клуба из настроек.
+    return {'primary': get_system_logo_url(get_club_settings_instance())}
 
 
 def live_match_payload(match):
@@ -10637,6 +10637,8 @@ def live_tournament_matches(tournament):
             'stage_label': post_stage_label(m),
             'home': item['home']['team_name'],
             'away': item['away']['team_name'],
+            'home_logo': item['home'].get('team_logo_url'),
+            'away_logo': item['away'].get('team_logo_url'),
             'home_score': m.home_score,
             'away_score': m.away_score,
             'kickoff_at': item['kickoff_at'],
@@ -10657,7 +10659,7 @@ def live_public_state(tournament, state):
         'tournament': {'id': tournament.id, 'name': tournament.name},
         'scene': state['scene'],
         'show_logos': state['show_logos'],
-        'logos': live_logo_urls(state),
+        'logos': live_logo_urls(),
         'clock': state['clock'],
         'match': live_match_payload(match),
     }
@@ -10669,16 +10671,34 @@ def live_tournament_or_404(tournament_id, key):
     if not tournament:
         return None, None
     state = load_live_state(tournament)
-    if not state['token'] or not secrets.compare_digest(str(key or ''), state['token']):
+    key = str(key or '')
+    if not any(token and secrets.compare_digest(key, token)
+               for token in (state['token'], state['legacy_token'])):
         return None, None
     return tournament, state
+
+
+LIVE_BAD_LINK = 'Неверная ссылка табло. Скопируйте её заново в пульте трансляции.'
+
+
+@app.route('/tv/<code>')
+def live_overlay_short(code):
+    code = str(code or '').lower()
+    if len(code) != LIVE_CODE_LENGTH or any(ch not in LIVE_CODE_ALPHABET for ch in code):
+        return LIVE_BAD_LINK, 404
+    ensure_tournament_tables()
+    for tournament in Tournament.query.filter(Tournament.formats.contains(code)).all():
+        state = load_live_state(tournament)
+        if state['token'] and secrets.compare_digest(code, state['token']):
+            return render_template('live_overlay.html', tournament=tournament, key=code)
+    return LIVE_BAD_LINK, 404
 
 
 @app.route('/live/<int:tournament_id>')
 def live_overlay_page(tournament_id):
     tournament, _ = live_tournament_or_404(tournament_id, request.args.get('key'))
     if not tournament:
-        return 'Неверная ссылка табло. Скопируйте её заново в пульте трансляции.', 404
+        return LIVE_BAD_LINK, 404
     return render_template('live_overlay.html', tournament=tournament, key=request.args.get('key'))
 
 
@@ -10707,8 +10727,7 @@ def live_control_page(tournament_id):
 def live_control_payload(tournament, state):
     return {
         'success': True,
-        'overlay_url': url_for('live_overlay_page', tournament_id=tournament.id,
-                               key=state['token'], _external=True),
+        'overlay_url': url_for('live_overlay_short', code=state['token'], _external=True),
         'state': live_public_state(tournament, state),
         'matches': live_tournament_matches(tournament),
     }
@@ -10726,8 +10745,11 @@ def live_control_api(tournament_id):
     state = load_live_state(tournament)
 
     if request.method == 'GET':
-        if not state['token']:
-            state['token'] = secrets.token_urlsafe(12)
+        if len(state['token']) != LIVE_CODE_LENGTH:
+            # Первая версия выдавала длинный ключ — меняем на короткий код, старый продолжает работать.
+            if state['token']:
+                state['legacy_token'] = state['token']
+            state['token'] = new_live_code()
             save_live_state(tournament, state)
             db.session.commit()
         return jsonify(live_control_payload(tournament, state))
@@ -10791,41 +10813,6 @@ def live_control_api(tournament_id):
         elapsed = max(0, live_clock_elapsed(clock, now) + delta * 1000)
         clock.update(base_ms=elapsed, since_ms=now if clock['running'] else 0)
 
-    save_live_state(tournament, state)
-    db.session.commit()
-    return jsonify(live_control_payload(tournament, state))
-
-
-@app.route('/api/tournaments/<int:tournament_id>/live/logo/<slot>', methods=['POST', 'DELETE'])
-@login_required
-def live_logo_api(tournament_id, slot):
-    if not has_tournament_permission('edit'):
-        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
-    if slot not in LIVE_LOGO_SLOTS:
-        return jsonify({'success': False, 'message': 'Неизвестный логотип'}), 400
-    ensure_tournament_tables()
-    tournament = db.session.get(Tournament, tournament_id)
-    if not tournament:
-        return jsonify({'success': False, 'message': 'Турнир не найден'}), 404
-    state = load_live_state(tournament)
-    old = state['logos'].get(slot)
-    if request.method == 'DELETE':
-        delete_tournament_catalog_media(old, ('tournament_live_logo_',))
-        state['logos'][slot] = None
-    else:
-        file = request.files.get('logo')
-        if not file or not file.filename:
-            return jsonify({'success': False, 'message': 'Выберите файл логотипа'}), 400
-        try:
-            ext = detect_upload_image_extension(file)
-            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-            filename = f"tournament_live_logo_{int(time.time())}_{uuid.uuid4().hex[:8]}{ext}"
-            # Табло показывают и в 4K — храним крупно, с прозрачностью.
-            save_optimized_logo_upload(file, os.path.join(app.config['UPLOAD_FOLDER'], filename), (1200, 1200))
-        except Exception as error:
-            return jsonify({'success': False, 'message': f'Не удалось сохранить логотип: {error}'}), 400
-        delete_tournament_catalog_media(old, ('tournament_live_logo_',))
-        state['logos'][slot] = os.path.join('frontend', 'static', 'uploads', filename)
     save_live_state(tournament, state)
     db.session.commit()
     return jsonify(live_control_payload(tournament, state))

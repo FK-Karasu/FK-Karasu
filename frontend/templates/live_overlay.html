@@ -368,11 +368,19 @@
             font-size: calc(var(--u) * var(--fs, 22));
             font-weight: 650;
             white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            min-width: 0;
+        }
+        .roster li .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+        .roster li .ph {
+            width: 1.75em;
+            height: 1.75em;
+            flex: none;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, .12) center/cover no-repeat;
+            border: calc(var(--u) * 2) solid rgba(255, 255, 255, .25);
         }
         .roster li .n {
-            width: calc(var(--u) * 40);
+            width: 1.6em;
             flex: none;
             color: var(--accent);
             font-weight: 850;
@@ -485,7 +493,7 @@
     function renderLogos() {
         const box = $('logos');
         const logos = state.logos || {};
-        const list = [logos.primary, logos.secondary].filter(Boolean);
+        const list = [logos.primary].filter(Boolean);
         const visible = state.show_logos && state.scene !== 'hidden' && list.length;
         box.classList.toggle('hidden', !visible);
         const html = list.map((url) => `<div class="logo-plate"><img src="${esc(url)}" alt=""></div>`).join('');
@@ -539,16 +547,29 @@
     function rosterHtml(team) {
         if (!team) return '<div class="roster"></div>';
         const players = team.players || [];
-        // Длинный заявочный лист — мельче и в две колонки, чтобы влез целиком.
-        const cols = players.length > 14 ? 2 : 1;
-        const perCol = Math.ceil(players.length / cols) || 1;
-        const fs = Math.max(15, Math.min(24, Math.floor(420 / perCol)));
         const items = players.map((p) => `
             <li class="${p.is_starting ? '' : 'bench'}"><span class="n">${esc(p.number || '')}</span>
-                <span>${esc(p.name)}</span>${p.is_goalkeeper ? '<span class="gk">ВРТ</span>' : ''}</li>`).join('');
+                <span class="ph" style="${bg(p.photo_url)}"></span>
+                <span class="nm">${esc(p.name)}</span>${p.is_goalkeeper ? '<span class="gk">ВРТ</span>' : ''}</li>`).join('');
         const trainer = team.trainer_name ? `<div class="trainer">Тренер: <b>${esc(team.trainer_name)}</b></div>` : '';
-        return `<div class="roster" style="--cols:${cols};--fs:${fs}"><ol>${items}</ol>${trainer}</div>`;
+        return `<div class="roster"><ol>${items}</ol>${trainer}</div>`;
     }
+
+    // Составы любой длины должны влезть в кадр: от крупного шрифта в одну колонку
+    // уменьшаем шаг за шагом, затем две колонки, пока список не поместится.
+    const ROSTER_FITS = [[1, 26], [1, 24], [1, 22], [1, 20], [1, 18], [2, 20], [2, 18], [2, 16],
+        [1, 16], [2, 14], [2, 13], [2, 12], [2, 11], [2, 10]];
+    function fitRosters() {
+        const box = document.querySelector('.rosters');
+        if (!box) return;
+        const lists = box.querySelectorAll('.roster');
+        for (const [cols, fs] of ROSTER_FITS) {
+            lists.forEach((r) => { r.style.setProperty('--cols', cols); r.style.setProperty('--fs', fs); });
+            if (box.scrollHeight <= box.clientHeight + 1) return;
+        }
+    }
+    window.addEventListener('resize', fitRosters);
+    document.fonts?.ready.then(fitRosters);
 
     function versusHtml(match, middle) {
         const logo = (side) => {
@@ -638,6 +659,7 @@
                 + `<ul class="away${away.length > 8 ? ' many' : ''}">${away.join('')}</ul></div>`;
         }
         box.innerHTML = `<div class="board"${firstShow ? '' : ' style="animation:none"'}>${html}</div>`;
+        fitRosters();
     }
 
     // ---------- Всплывающие события ----------
