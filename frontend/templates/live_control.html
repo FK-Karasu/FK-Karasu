@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Трансляция — {{ tournament.name }}</title>
+    {% include '_pwa_head.html' %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
+    <style>
+        :root {
+            --bg: #f4f1ee;
+            --card: #fff;
+            --ink: #1d2026;
+            --muted: #747b86;
+            --line: #e6e1dc;
+            --accent: #ff8a00;
+            --accent-ink: #b35c00;
+            --yellow: #ffcf1a;
+            --red: #e5322d;
+            --ok: #16a34a;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: 'Onest', system-ui, sans-serif;
+            font-size: 15px;
+        }
+        button, input, select { font: inherit; }
+        .wrap { max-width: 1180px; margin: 0 auto; padding: 16px 16px 60px; }
+        header.top {
+            display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+        }
+        header.top a.back {
+            display: grid; place-items: center; width: 40px; height: 40px; flex: none;
+            border-radius: 12px; background: var(--card); color: var(--ink); text-decoration: none;
+            border: 1px solid var(--line); font-size: 20px;
+        }
+        header.top h1 { margin: 0; font-size: 20px; line-height: 1.2; }
+        header.top small { display: block; color: var(--muted); font-size: 13px; font-weight: 500; }
+        .live-dot {
+            margin-left: auto; display: inline-flex; align-items: center; gap: 8px;
+            padding: 6px 12px; border-radius: 999px; background: #fff; border: 1px solid var(--line);
+            font-size: 13px; font-weight: 700; color: var(--muted); white-space: nowrap;
+        }
+        .live-dot::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: #c4c8cf; }
+        .live-dot.on { color: var(--red); }
+        .live-dot.on::before { background: var(--red); animation: blink 1.4s infinite; }
+        @keyframes blink { 50% { opacity: .25; } }
+
+        .grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+        @media (max-width: 880px) { .grid { grid-template-columns: 1fr; } }
+        .col { display: grid; gap: 16px; min-width: 0; }
+        .card {
+            background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px;
+            min-width: 0;
+        }
+        .card h2 {
+            margin: 0 0 12px; font-size: 13px; font-weight: 800; letter-spacing: .06em;
+            text-transform: uppercase; color: var(--muted);
+        }
+        .hint { color: var(--muted); font-size: 13px; line-height: 1.45; margin: 8px 0 0; }
+
+        .preview-box {
+            position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden;
+            background: #1d3b22;
+        }
+        .preview-box iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+        .url-row { display: flex; gap: 8px; }
+        .url-row input {
+            flex: 1; min-width: 0; height: 42px; padding: 0 12px; border: 1px solid var(--line);
+            border-radius: 11px; background: #faf8f6; color: var(--ink); font-size: 13px;
+        }
+
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            min-height: 42px; padding: 0 16px; border-radius: 11px; border: 1px solid var(--line);
+            background: #fff; color: var(--ink); font-weight: 650; cursor: pointer; white-space: nowrap;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn:active { transform: scale(.98); }
+        .btn:disabled { opacity: .45; cursor: default; }
+        .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .btn.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
+        .btn.danger { color: var(--red); }
+
+        select.match-select {
+            width: 100%; height: 46px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px;
+            background: #fff; color: var(--ink);
+        }
+        .scoreline {
+            display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px;
+            margin-top: 14px; padding: 14px; border-radius: 14px; background: #faf8f6;
+        }
+        .scoreline .team { display: flex; align-items: center; gap: 10px; font-weight: 750; min-width: 0; }
+        .scoreline .team.away { flex-direction: row-reverse; text-align: right; }
+        .scoreline .team span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .scoreline .logo {
+            width: 38px; height: 38px; flex: none; border-radius: 50%; background: #fff center/contain no-repeat;
+            border: 1px solid var(--line);
+        }
+        .scoreline .score { font-size: 30px; font-weight: 850; font-variant-numeric: tabular-nums; }
+
+        .scenes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+        @media (max-width: 520px) { .scenes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+        .scene {
+            min-height: 64px; padding: 8px; border-radius: 14px; border: 2px solid var(--line); background: #fff;
+            font-weight: 750; cursor: pointer; display: flex; flex-direction: column; align-items: center;
+            justify-content: center; gap: 2px; text-align: center; line-height: 1.2;
+        }
+        .scene small { color: var(--muted); font-weight: 500; font-size: 12px; }
+        .scene.active { border-color: var(--accent); background: #fff4e6; color: var(--accent-ink); }
+
+        .clock {
+            display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 12px;
+        }
+        .clock b { font-size: 46px; font-weight: 850; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+        .clock .period { display: flex; align-items: center; gap: 6px; }
+        .clock .period span { min-width: 70px; text-align: center; font-weight: 750; color: var(--muted); }
+        .row { display: flex; flex-wrap: wrap; gap: 8px; }
+        .row .btn { flex: 1 1 auto; }
+        .half-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--muted); font-size: 14px; }
+        .half-row input {
+            width: 72px; height: 38px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px;
+        }
+
+        .events-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .side-actions { display: grid; gap: 8px; min-width: 0; }
+        .side-actions .label {
+            font-weight: 750; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .side-actions .btn.goal { min-height: 52px; font-size: 16px; }
+        .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .chip-card { width: 14px; height: 19px; border-radius: 3px; background: var(--yellow); display: inline-block; }
+        .chip-card.red { background: var(--red); }
+        .events-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 6px; }
+        .events-list li {
+            display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 11px;
+            background: #faf8f6; font-size: 14px;
+        }
+        .events-list li .m { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 34px; }
+        .events-list li .t { margin-left: auto; color: var(--muted); font-size: 12px; max-width: 40%;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .logo-slot {
+            display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid var(--line);
+            border-radius: 14px;
+        }
+        .logo-slot + .logo-slot { margin-top: 10px; }
+        .logo-slot .img {
+            width: 96px; height: 60px; flex: none; border-radius: 10px; background: #faf8f6 center/contain no-repeat;
+            border: 1px solid var(--line);
+        }
+        .logo-slot .txt { flex: 1; min-width: 0; }
+        .logo-slot .txt b { display: block; }
+        .logo-slot .txt small { color: var(--muted); }
+        .logo-slot .acts { display: flex; flex-direction: column; gap: 6px; }
+        .logo-slot .acts .btn { min-height: 34px; padding: 0 12px; font-size: 13px; }
+        .switch { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-weight: 600; }
+        .switch input { width: 20px; height: 20px; accent-color: var(--accent); }
+
+        .toast {
+            position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 50;
+            max-width: calc(100% - 32px); padding: 12px 18px; border-radius: 12px; background: var(--ink);
+            color: #fff; font-weight: 600; box-shadow: 0 12px 30px rgba(0, 0, 0, .2);
+        }
+        .toast.err { background: var(--red); }
+
+        .sheet-backdrop {
+            position: fixed; inset: 0; z-index: 40; display: flex; align-items: flex-end; justify-content: center;
+            background: rgba(20, 22, 26, .5);
+        }
+        .sheet {
+            width: min(560px, 100%); max-height: 86vh; display: flex; flex-direction: column;
+            border-radius: 20px 20px 0 0; background: #fff; overflow: hidden;
+        }
+        @media (min-width: 700px) {
+            .sheet-backdrop { align-items: center; }
+            .sheet { border-radius: 20px; }
+        }
+        .sheet-head { padding: 16px; border-bottom: 1px solid var(--line); }
+        .sheet-head h3 { margin: 0 0 10px; font-size: 18px; }
+        .sheet-opts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .sheet-opts label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+        .sheet-opts input[type=number] {
+            width: 70px; height: 36px; padding: 0 8px; border: 1px solid var(--line); border-radius: 9px;
+        }
+        .sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 16px 16px; }
+        .sheet-body h4 { margin: 12px 0 6px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+        .player-btn {
+            width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 12px; margin-bottom: 6px;
+            border: 1px solid var(--line); border-radius: 12px; background: #fff; text-align: left; cursor: pointer;
+        }
+        .player-btn.sel { border-color: var(--accent); background: #fff4e6; }
+        .player-btn .n { width: 32px; font-weight: 850; color: var(--accent-ink); text-align: right; flex: none; }
+        .player-btn .ph {
+            width: 34px; height: 34px; border-radius: 50%; flex: none; background: #eee center/cover no-repeat;
+        }
+        .sheet-foot { display: flex; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+        .sheet-foot .btn { flex: 1; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <header class="top">
+        <a class="back" href="{{ url_for('tournaments_page') }}" aria-label="К турнирам">←</a>
+        <div>
+            <h1>Трансляция</h1>
+            <small>{{ tournament.name }}</small>
+        </div>
+        <span class="live-dot" id="liveDot">Табло скрыто</span>
+    </header>
+
+    <div class="grid">
+        <div class="col">
+            <section class="card">
+                <h2>Так видят зрители</h2>
+                <div class="preview-box"><iframe id="previewFrame" title="Предпросмотр табло"></iframe></div>
+                <p class="hint">Здесь табло поверх зелёного фона. В OBS фон прозрачный, табло ляжет поверх видео.</p>
+            </section>
+
+            <section class="card">
+                <h2>Ссылка для OBS</h2>
+                <div class="url-row">
+                    <input id="obsUrl" readonly>
+                    <button class="btn dark" id="copyUrl" type="button">Копировать</button>
+                </div>
+                <p class="hint">
+                    OBS → «Источники» → <b>+</b> → <b>Браузер</b> → вставить ссылку,
+                    ширина и высота как у трансляции (1920×1080, 2560×1440 или 3840×2160).
+                    Ссылку не публикуйте: по ней видно табло.
+                </p>
+            </section>
+
+            <section class="card">
+                <h2>Логотипы в углу</h2>
+                <div class="logo-slot">
+                    <div class="img" id="logoPrimaryImg"></div>
+                    <div class="txt"><b>Логотип 1</b><small id="logoPrimaryNote">из настроек клуба</small></div>
+                    <div class="acts">
+                        <button class="btn" type="button" data-logo-upload="primary">Загрузить</button>
+                        <button class="btn danger" type="button" data-logo-delete="primary">Сбросить</button>
+                    </div>
+                </div>
+                <div class="logo-slot">
+                    <div class="img" id="logoSecondaryImg"></div>
+                    <div class="txt"><b>Логотип 2</b><small id="logoSecondaryNote">например, KFL KIDS</small></div>
+                    <div class="acts">
+                        <button class="btn" type="button" data-logo-upload="secondary">Загрузить</button>
+                        <button class="btn danger" type="button" data-logo-delete="secondary">Убрать</button>
+                    </div>
+                </div>
+                <label class="switch"><input type="checkbox" id="showLogos"> Показывать логотипы</label>
+                <p class="hint">Лучше PNG с прозрачным фоном. Подходит любой размер, крупный логотип будет чётким и в 4K.</p>
+                <input type="file" id="logoFile" accept="image/*" hidden>
+            </section>
+        </div>
+
+        <div class="col">
+            <section class="card">
+                <h2>Матч в эфире</h2>
+                <select class="match-select" id="matchSelect"></select>
+                <div class="scoreline" id="scoreline" hidden></div>
+            </section>
+
+            <section class="card">
+                <h2>Что показать</h2>
+                <div class="scenes">
+                    <button class="scene" type="button" data-scene="score">Счёт<small>в углу</small></button>
+                    <button class="scene" type="button" data-scene="intro">Встреча команд<small>составы</small></button>
+                    <button class="scene" type="button" data-scene="result">Итог матча<small>счёт и голы</small></button>
+                    <button class="scene" type="button" data-scene="hidden">Скрыть всё<small>пустой экран</small></button>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>Время матча</h2>
+                <div class="clock">
+                    <b id="clockText">00:00</b>
+                    <div class="period">
+                        <button class="btn" type="button" data-clock="prev_period" aria-label="Предыдущий тайм">‹</button>
+                        <span id="periodText">1 тайм</span>
+                        <button class="btn" type="button" data-clock="next_period" aria-label="Следующий тайм">›</button>
+                    </div>
+                </div>
+                <div class="row">
+                    <button class="btn primary" type="button" id="startPause">▶ Старт</button>
+                    <button class="btn" type="button" data-adjust="-60">−1 мин</button>
+                    <button class="btn" type="button" data-adjust="-10">−10 с</button>
+                    <button class="btn" type="button" data-adjust="10">+10 с</button>
+                    <button class="btn" type="button" data-adjust="60">+1 мин</button>
+                    <button class="btn danger" type="button" data-clock="reset">Сброс</button>
+                </div>
+                <div class="half-row">
+                    Длина тайма, мин:
+                    <input type="number" id="halfMinutes" min="0" max="90" inputmode="numeric" placeholder="—">
+                    <span>второй тайм начнётся с этой отметки</span>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>Голы и карточки</h2>
+                <div class="events-actions" id="eventActions"></div>
+                <ul class="events-list" id="eventsList"></ul>
+                <p class="hint">Гол сразу меняет счёт на сайте и всплывает в эфире. Минуту подставим по таймеру.</p>
+            </section>
+        </div>
+    </div>
+</div>
+
+<script>
+(() => {
+    const TID = {{ tournament.id }};
+    const $ = (id) => document.getElementById(id);
+    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+    const bg = (url) => url ? `background-image:url('${String(url).replace(/'/g, '%27')}')` : '';
+
+    let data = null;
+    let clockOffset = 0;
+    let busy = false;
+
+    async function api(url, options = {}) {
+        const opts = { credentials: 'same-origin', ...options };
+        if (opts.body && !(opts.body instanceof FormData)) {
+            opts.headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+            opts.body = JSON.stringify(opts.body);
+        }
+        const response = await fetch(url, opts);
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok || json.success === false) throw new Error(json.message || 'Не удалось выполнить действие');
+        return json;
+    }
+
+    function toast(text, isError = false) {
+        document.querySelector('.toast')?.remove();
+        const el = document.createElement('div');
+        el.className = `toast${isError ? ' err' : ''}`;
+        el.textContent = text;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), isError ? 5000 : 2200);
+    }
+
+    function apply(payload) {
+        const started = payload._started || Date.now();
+        data = payload;
+        clockOffset = payload.state.server_now - Math.round((started + Date.now()) / 2);
+        render();
+    }
+
+    async function load() {
+        const started = Date.now();
+        const payload = await api(`/api/tournaments/${TID}/live`);
+        payload._started = started;
+        apply(payload);
+    }
+
+    async function update(body, okText) {
+        if (busy) return;
+        busy = true;
+        try {
+            const started = Date.now();
+            const payload = await api(`/api/tournaments/${TID}/live`, { method: 'POST', body });
+            payload._started = started;
+            apply(payload);
+            if (okText) toast(okText);
+        } catch (error) {
+            toast(error.message, true);
+        } finally {
+            busy = false;
+        }
+    }
+
+    // ---------- Отрисовка ----------
+    function elapsedMs() {
+        const clock = data?.state?.clock;
+        if (!clock) return 0;
+        let ms = clock.base_ms;
+        if (clock.running && clock.since_ms) ms += Math.max(0, Date.now() + clockOffset - clock.since_ms);
+        return ms;
+    }
+    function fmt(ms) {
+        const total = Math.floor(ms / 1000);
+        return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+    }
+    function periodLabel(p) {
+        return p <= 2 ? `${p} тайм` : (p === 3 ? 'доп. 1' : 'доп. 2');
+    }
+    setInterval(() => { if (data) $('clockText').textContent = fmt(elapsedMs()); }, 250);
+
+    function renderMatches() {
+        const select = $('matchSelect');
+        const current = data.state.match?.id || '';
+        const key = JSON.stringify([data.matches, current]);
+        if (select.dataset.key === key) return;
+        select.dataset.key = key;
+        const groups = {};
+        for (const m of data.matches) (groups[m.age_group] ||= []).push(m);
+        const time = (m) => {
+            if (!m.kickoff_at) return '';
+            const d = new Date(m.kickoff_at);
+            return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('ru-RU',
+                { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' · ';
+        };
+        const score = (m) => m.home_score != null ? ` (${m.home_score}:${m.away_score})` : '';
+        select.innerHTML = '<option value="">— Выберите матч —</option>' + Object.entries(groups).map(([age, list]) =>
+            `<optgroup label="${esc(age)}">${list.map((m) => `<option value="${m.id}"${m.ready ? '' : ' disabled'}>
+                ${esc(time(m) + m.home + ' — ' + m.away + score(m) + (m.stage_label ? ' · ' + m.stage_label : ''))}
+            </option>`).join('')}</optgroup>`).join('');
+        select.value = String(current);
+    }
+
+    function renderScoreline() {
+        const match = data.state.match;
+        const box = $('scoreline');
+        box.hidden = !match;
+        if (!match) return;
+        const logo = (side) => `<div class="logo" style="${bg(match[side + '_team']?.logo_url || match[side].team_logo_url)}"></div>`;
+        box.innerHTML = `
+            <div class="team home">${logo('home')}<span>${esc(match.home.team_name)}</span></div>
+            <div class="score">${match.home_score ?? 0}:${match.away_score ?? 0}</div>
+            <div class="team away">${logo('away')}<span>${esc(match.away.team_name)}</span></div>`;
+    }
+
+    function renderEvents() {
+        const match = data.state.match;
+        const actions = $('eventActions');
+        const list = $('eventsList');
+        if (!match) {
+            actions.innerHTML = '<p class="hint">Сначала выберите матч.</p>';
+            list.innerHTML = '';
+            return;
+        }
+        const side = (s) => `
+            <div class="side-actions">
+                <div class="label">${esc(match[s].team_name)}</div>
+                <button class="btn primary goal" type="button" data-event="goal" data-side="${s}">+ Гол</button>
+                <div class="cards">
+                    <button class="btn" type="button" data-event="yellow" data-side="${s}"><span class="chip-card"></span>ЖК</button>
+                    <button class="btn" type="button" data-event="red" data-side="${s}"><span class="chip-card red"></span>КК</button>
+                </div>
+            </div>`;
+        const html = side('home') + side('away');
+        if (actions.dataset.html !== html) { actions.innerHTML = html; actions.dataset.html = html; }
+        // Свежие (с бо́льшей минутой) сверху, без минуты — внизу.
+        const events = (match.events || []).map((e, index) => ({ ...e, index }))
+            .sort((a, b) => (b.minute ?? -1) - (a.minute ?? -1) || b.index - a.index);
+        list.innerHTML = events.map((e) => {
+            const icon = e.kind === 'goal' ? '⚽' : `<span class="chip-card${e.card === 'red' ? ' red' : ''}"></span>`;
+            const name = e.player ? e.player.name : 'Без автора';
+            const extra = e.is_own_goal ? ' (автогол)' : (e.is_penalty ? ' (пенальти)' : '');
+            return `<li><span class="m">${e.minute != null ? e.minute + "'" : '—'}</span>${icon}
+                <span>${esc(name + extra)}</span><span class="t">${esc(match[e.side].team_name)}</span>
+                <button class="btn danger" type="button" data-remove="${e.index}" aria-label="Удалить"
+                    style="min-height:30px;padding:0 10px;font-size:13px">✕</button></li>`;
+        }).join('');
+    }
+
+    function render() {
+        const st = data.state;
+        $('obsUrl').value = data.overlay_url;
+        const frame = $('previewFrame');
+        const previewUrl = `${data.overlay_url}&preview=1`;
+        if (frame.dataset.src !== previewUrl) { frame.src = previewUrl; frame.dataset.src = previewUrl; }
+
+        renderMatches();
+        renderScoreline();
+        renderEvents();
+
+        document.querySelectorAll('[data-scene]').forEach((b) => b.classList.toggle('active', b.dataset.scene === st.scene));
+        const on = st.scene !== 'hidden' && (st.match || (st.show_logos && (st.logos.primary || st.logos.secondary)));
+        $('liveDot').classList.toggle('on', !!on);
+        $('liveDot').textContent = on ? 'Табло в эфире' : 'Табло скрыто';
+
+        $('periodText').textContent = periodLabel(st.clock.period);
+        $('startPause').textContent = st.clock.running ? '❚❚ Пауза' : '▶ Старт';
+        $('startPause').classList.toggle('dark', st.clock.running);
+        $('startPause').classList.toggle('primary', !st.clock.running);
+        if (document.activeElement !== $('halfMinutes')) $('halfMinutes').value = st.clock.half_minutes || '';
+
+        $('logoPrimaryImg').style.cssText = bg(st.logos.primary);
+        $('logoSecondaryImg').style.cssText = bg(st.logos.secondary);
+        $('logoPrimaryNote').textContent = st.logos.primary_custom ? 'загружен для трансляции' : 'из настроек клуба';
+        $('logoSecondaryNote').textContent = st.logos.secondary ? 'загружен' : 'не загружен (например, KFL KIDS)';
+        document.querySelector('[data-logo-delete="primary"]').disabled = !st.logos.primary_custom;
+        document.querySelector('[data-logo-delete="secondary"]').disabled = !st.logos.secondary;
+        $('showLogos').checked = st.show_logos;
+    }
+
+    // ---------- Действия ----------
+    $('copyUrl').addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText($('obsUrl').value);
+        } catch (error) {
+            $('obsUrl').select();
+            document.execCommand('copy');
+        }
+        toast('Ссылка скопирована');
+    });
+    $('matchSelect').addEventListener('change', (e) => update({ match_id: e.target.value || null }, 'Матч выбран'));
+    document.querySelectorAll('[data-scene]').forEach((b) => b.addEventListener('click', () => update({ scene: b.dataset.scene })));
+    $('startPause').addEventListener('click', () => update({ clock: data.state.clock.running ? 'pause' : 'start' }));
+    document.querySelectorAll('[data-clock]').forEach((b) => b.addEventListener('click', () => {
+        if (b.dataset.clock === 'reset' && !confirm('Сбросить время на 00:00?')) return;
+        update({ clock: b.dataset.clock });
+    }));
+    document.querySelectorAll('[data-adjust]').forEach((b) => b.addEventListener('click', () =>
+        update({ clock: 'adjust', delta_seconds: Number(b.dataset.adjust) })));
+    $('halfMinutes').addEventListener('change', (e) => update({ half_minutes: e.target.value || 0 }, 'Сохранено'));
+    $('showLogos').addEventListener('change', (e) => update({ show_logos: e.target.checked }));
+
+    let logoSlot = null;
+    document.querySelectorAll('[data-logo-upload]').forEach((b) => b.addEventListener('click', () => {
+        logoSlot = b.dataset.logoUpload;
+        $('logoFile').value = '';
+        $('logoFile').click();
+    }));
+    $('logoFile').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file || !logoSlot) return;
+        const form = new FormData();
+        form.append('logo', file);
+        try {
+            apply(await api(`/api/tournaments/${TID}/live/logo/${logoSlot}`, { method: 'POST', body: form }));
+            toast('Логотип загружен');
+        } catch (error) {
+            toast(error.message, true);
+        }
+    });
+    document.querySelectorAll('[data-logo-delete]').forEach((b) => b.addEventListener('click', async () => {
+        try {
+            apply(await api(`/api/tournaments/${TID}/live/logo/${b.dataset.logoDelete}`, { method: 'DELETE' }));
+        } catch (error) {
+            toast(error.message, true);
+        }
+    }));
+
+    // ---------- Гол / карточка: тот же протокол матча, что и в разделе «Турниры» ----------
+    async function loadProtocol(matchId) {
+        return (await api(`/api/tournament-matches/${matchId}/protocol`)).protocol;
+    }
+
+    function protocolPayload(protocol, match) {
+        const sideOf = { [protocol.home.entry_id]: 'home', [protocol.away.entry_id]: 'away' };
+        const lineups = {};
+        for (const s of ['home', 'away']) {
+            lineups[s] = (protocol[s]?.lineup || []).map((row) => ({
+                member_id: row.member_id, is_starting: row.is_starting,
+                is_goalkeeper: row.is_goalkeeper, minutes: row.minutes,
+            }));
+        }
+        const events = protocol.events.map((e) => ({
+            side: sideOf[e.entry_id], kind: e.kind, member_id: e.member_id, minute: e.minute,
+            is_own_goal: e.is_own_goal, is_penalty: e.is_penalty,
+            assist_member_id: e.assist_member_id, card: e.card,
+        }));
+        return { lineups, events };
+    }
+
+    async function saveEvent(match, side, kind, card, memberId, minute, flags) {
+        const protocol = await loadProtocol(match.id);
+        const payload = protocolPayload(protocol, match);
+        payload.events.push({
+            side, kind, member_id: memberId || null, minute: minute === '' ? null : minute,
+            is_own_goal: !!flags.own, is_penalty: !!flags.penalty, assist_member_id: null,
+            card: kind === 'card' ? card : null,
+        });
+        if (kind === 'goal') {
+            const home = (protocol.home_score ?? 0) + (side === 'home' ? 1 : 0);
+            const away = (protocol.away_score ?? 0) + (side === 'away' ? 1 : 0);
+            await api(`/api/tournament-matches/${match.id}`, { method: 'PUT', body: { home_score: home, away_score: away } });
+            try {
+                await api(`/api/tournament-matches/${match.id}/protocol`, { method: 'PUT', body: payload });
+            } catch (error) {
+                // Протокол не принял гол — возвращаем счёт, чтобы он не разошёлся с протоколом.
+                await api(`/api/tournament-matches/${match.id}`, { method: 'PUT', body: {
+                    home_score: protocol.home_score, away_score: protocol.away_score } }).catch(() => {});
+                throw error;
+            }
+        } else {
+            await api(`/api/tournament-matches/${match.id}/protocol`, { method: 'PUT', body: payload });
+        }
+    }
+
+    // Удаляем именно выбранное событие: ищем его в протоколе по содержимому,
+    // потому что протокол при сохранении пересоздаёт строки и номера меняются.
+    async function removeEvent(index) {
+        const match = data.state.match;
+        const target = match?.events?.[index];
+        if (!target) return;
+        const what = target.kind === 'goal' ? 'гол' : 'карточку';
+        if (!confirm(`Удалить ${what} (${target.player ? target.player.name : 'без автора'})?`)) return;
+        try {
+            const protocol = await loadProtocol(match.id);
+            const payload = protocolPayload(protocol, match);
+            const memberId = target.player ? target.player.member_id : null;
+            const pos = payload.events.findIndex((e) => e.side === target.side && e.kind === target.kind
+                && (e.card || null) === (target.card || null) && (e.member_id || null) === memberId
+                && (e.minute ?? null) === (target.minute ?? null)
+                && !!e.is_own_goal === !!target.is_own_goal && !!e.is_penalty === !!target.is_penalty);
+            if (pos < 0) throw new Error('Событие уже изменили — обновите страницу');
+            const removed = payload.events.splice(pos, 1)[0];
+            if (removed.kind === 'goal') {
+                // Сначала счёт, потом протокол: протокол проверяет, что голов столько же, сколько в счёте.
+                const home = Math.max(0, (protocol.home_score ?? 0) - (removed.side === 'home' ? 1 : 0));
+                const away = Math.max(0, (protocol.away_score ?? 0) - (removed.side === 'away' ? 1 : 0));
+                await api(`/api/tournament-matches/${match.id}`, { method: 'PUT', body: { home_score: home, away_score: away } });
+            }
+            await api(`/api/tournament-matches/${match.id}/protocol`, { method: 'PUT', body: payload });
+            toast('Удалено');
+            await load();
+        } catch (error) {
+            toast(error.message, true);
+            load().catch(() => {});
+        }
+    }
+
+    function openEventSheet(side, type) {
+        const match = data.state.match;
+        if (!match) return;
+        const kind = type === 'goal' ? 'goal' : 'card';
+        const card = type === 'red' ? 'red' : 'yellow';
+        const team = match[`${side}_team`];
+        const other = match[`${side === 'home' ? 'away' : 'home'}_team`];
+        const minuteGuess = Math.floor(elapsedMs() / 60000) + 1;
+        const title = kind === 'goal' ? `Гол: ${match[side].team_name}`
+            : `${card === 'red' ? 'Красная' : 'Жёлтая'} карточка: ${match[side].team_name}`;
+
+        const playerButtons = (players) => (players || []).map((p, i) => `
+            <button class="player-btn" type="button" data-idx="${i}">
+                <span class="n">${esc(p.number || '')}</span>
+                <span class="ph" style="${bg(p.photo_url)}"></span>
+                <span>${esc(p.name)}</span>
+            </button>`).join('');
+
+        const backdrop = document.createElement('div');
+        backdrop.className = 'sheet-backdrop';
+        backdrop.innerHTML = `
+            <div class="sheet" role="dialog" aria-modal="true">
+                <div class="sheet-head">
+                    <h3>${esc(title)}</h3>
+                    <div class="sheet-opts">
+                        <label>Минута <input type="number" min="0" max="200" inputmode="numeric" value="${minuteGuess}" id="evMinute"></label>
+                        ${kind === 'goal' ? `
+                        <label><input type="checkbox" id="evPenalty"> пенальти</label>
+                        <label><input type="checkbox" id="evOwn"> автогол</label>` : ''}
+                    </div>
+                </div>
+                <div class="sheet-body" id="evPlayers"></div>
+                <div class="sheet-foot">
+                    <button class="btn" type="button" data-close>Отмена</button>
+                    ${kind === 'goal' ? '<button class="btn" type="button" id="evNoAuthor">Без автора</button>' : ''}
+                    <button class="btn primary" type="button" id="evSave" disabled>Сохранить</button>
+                </div>
+            </div>`;
+        document.body.appendChild(backdrop);
+        let selected = null;
+
+        function fillPlayers() {
+            const own = kind === 'goal' && backdrop.querySelector('#evOwn')?.checked;
+            // Автогол забивает игрок соперника.
+            const list = own ? other?.squad : team?.squad;
+            selected = null;
+            backdrop.querySelector('#evSave').disabled = true;
+            backdrop.querySelector('#evPlayers').innerHTML = list && list.length
+                ? `<h4>${own ? 'Кто из соперников забил в свои ворота' : 'Игрок'}</h4>${playerButtons(list)}`
+                : '<p class="hint">В заявке нет игроков.</p>';
+            backdrop.querySelectorAll('.player-btn').forEach((btn) => btn.addEventListener('click', () => {
+                backdrop.querySelectorAll('.player-btn').forEach((b) => b.classList.remove('sel'));
+                btn.classList.add('sel');
+                selected = list[Number(btn.dataset.idx)];
+                backdrop.querySelector('#evSave').disabled = false;
+            }));
+        }
+        fillPlayers();
+        backdrop.querySelector('#evOwn')?.addEventListener('change', fillPlayers);
+
+        const close = () => backdrop.remove();
+        backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+        backdrop.querySelector('[data-close]').addEventListener('click', close);
+
+        async function submit(withAuthor) {
+            const buttons = backdrop.querySelectorAll('.sheet-foot .btn');
+            buttons.forEach((b) => { b.disabled = true; });
+            const minuteRaw = backdrop.querySelector('#evMinute').value.trim();
+            const minute = minuteRaw === '' ? '' : Number(minuteRaw);
+            try {
+                await saveEvent(match, side, kind, card, withAuthor ? selected?.member_id : null, minute, {
+                    own: backdrop.querySelector('#evOwn')?.checked,
+                    penalty: backdrop.querySelector('#evPenalty')?.checked,
+                });
+                close();
+                toast(kind === 'goal' ? 'Гол записан' : 'Карточка записана');
+                await load();
+            } catch (error) {
+                toast(error.message, true);
+                buttons.forEach((b) => { b.disabled = false; });
+                if (!selected) backdrop.querySelector('#evSave').disabled = true;
+            }
+        }
+        backdrop.querySelector('#evSave').addEventListener('click', () => submit(true));
+        backdrop.querySelector('#evNoAuthor')?.addEventListener('click', () => submit(false));
+    }
+
+    document.addEventListener('click', (e) => {
+        const ev = e.target.closest('[data-event]');
+        if (ev) openEventSheet(ev.dataset.side, ev.dataset.event);
+        const rm = e.target.closest('[data-remove]');
+        if (rm) removeEvent(Number(rm.dataset.remove));
+    });
+
+    load().catch((error) => toast(error.message, true));
+    // Счёт мог поменяться с другого телефона — подтягиваем раз в 5 секунд.
+    setInterval(() => {
+        if (document.hidden || busy || document.querySelector('.sheet-backdrop')) return;
+        load().catch(() => {});
+    }, 5000);
+})();
+</script>
+</body>
+</html>

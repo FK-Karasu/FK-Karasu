@@ -3571,6 +3571,9 @@ function bindEvents() {
     byId('openStudioBtn').addEventListener('click', () => openStudio({
         age_group: catalogState.age,
     }));
+    byId('openLiveBtn')?.addEventListener('click', () => {
+        if (catalogState.entriesTournamentId) window.location.href = `/tournaments/${catalogState.entriesTournamentId}/live`;
+    });
     byId('studioDownload').addEventListener('click', downloadStudio);
     byId('studioUpload').addEventListener('change', (event) => {
         const file = event.target.files && event.target.files[0];

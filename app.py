@@ -10484,6 +10484,353 @@ def public_tournament_screen_page(tournament_id):
     return render_template('public_tournament_screen.html', tournament=tournament)
 
 
+# ===== ТАБЛО ДЛЯ ТРАНСЛЯЦИИ (OBS) =====
+#
+# Оператор добавляет в OBS «Браузер» с адресом /live/<турнир>?key=...; страница прозрачная
+# и сама опрашивает сервер. Что показывать (матч, сцена, таймер, логотипы), решает пульт
+# /tournaments/<id>/live. Состояние лежит в tournament.formats['_live'], как и _discipline.
+
+LIVE_SCENES = ('score', 'intro', 'result', 'hidden')
+LIVE_LOGO_SLOTS = ('primary', 'secondary')
+
+
+def now_ms():
+    return int(time.time() * 1000)
+
+
+def load_live_state(tournament):
+    try:
+        data = json.loads(tournament.formats or '{}')
+    except Exception:
+        data = {}
+    raw = data.get('_live') if isinstance(data, dict) else None
+    raw = raw if isinstance(raw, dict) else {}
+    clock = raw.get('clock') if isinstance(raw.get('clock'), dict) else {}
+    logos = raw.get('logos') if isinstance(raw.get('logos'), dict) else {}
+    return {
+        'token': raw.get('token') or '',
+        'match_id': raw.get('match_id'),
+        'scene': raw.get('scene') if raw.get('scene') in LIVE_SCENES else 'score',
+        'show_logos': raw.get('show_logos', True) is not False,
+        'clock': {
+            'running': bool(clock.get('running')),
+            'base_ms': int(clock.get('base_ms') or 0),
+            'since_ms': int(clock.get('since_ms') or 0),
+            'period': int(clock.get('period') or 1),
+            'half_minutes': int(clock.get('half_minutes') or 0),
+        },
+        'logos': {slot: logos.get(slot) for slot in LIVE_LOGO_SLOTS},
+        'version': int(raw.get('version') or 0),
+    }
+
+
+def save_live_state(tournament, state):
+    try:
+        data = json.loads(tournament.formats or '{}')
+    except Exception:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    state['version'] = int(state.get('version') or 0) + 1
+    data['_live'] = state
+    tournament.formats = json.dumps(data, ensure_ascii=False)
+
+
+def live_clock_elapsed(clock, at_ms=None):
+    elapsed = clock['base_ms']
+    if clock['running'] and clock['since_ms']:
+        elapsed += max(0, (at_ms or now_ms()) - clock['since_ms'])
+    return elapsed
+
+
+def live_logo_urls(state):
+    primary = get_tournament_media_url(state['logos'].get('primary')) if state['logos'].get('primary') else None
+    if not primary:
+        # По умолчанию — логотип клуба из настроек.
+        primary = get_system_logo_url(get_club_settings_instance())
+    secondary = get_tournament_media_url(state['logos'].get('secondary')) if state['logos'].get('secondary') else None
+    return {'primary': primary, 'secondary': secondary,
+            'primary_custom': bool(state['logos'].get('primary')),
+            'secondary_custom': bool(state['logos'].get('secondary'))}
+
+
+def live_match_payload(match):
+    """Всё, что табло показывает про матч: команды, счёт, события, составы."""
+    if not match:
+        return None
+    base = serialize_match(match)
+    appearances = TournamentMatchAppearance.query.filter_by(match_id=match.id).all()
+    events = TournamentMatchEvent.query.filter_by(match_id=match.id).order_by(
+        TournamentMatchEvent.minute.is_(None), TournamentMatchEvent.minute, TournamentMatchEvent.id).all()
+
+    def person(member):
+        if not member:
+            return None
+        return {
+            'member_id': member.id,
+            'name': ' '.join(filter(None, [member.last_name, member.first_name])),
+            'last_name': member.last_name,
+            'number': member.team_number,
+            'position': member.position,
+            'photo_url': get_tournament_media_url(member.photo_path),
+        }
+
+    def team(entry):
+        if not entry or not entry.team:
+            return None
+        lineup = [a for a in appearances if a.entry_id == entry.id]
+        if lineup:
+            # Протокол заполнен — показываем, кто реально вышел, стартовые первыми.
+            lineup.sort(key=lambda a: (not a.is_starting, not a.is_goalkeeper))
+            players = [{**person(a.member), 'is_goalkeeper': bool(a.is_goalkeeper),
+                        'is_starting': bool(a.is_starting)} for a in lineup if a.member]
+        else:
+            players = [{**person(m), 'is_goalkeeper': False, 'is_starting': True}
+                       for m in entry_squad(entry)]
+
+        def number_key(player):
+            try:
+                return (0, int(player['number']))
+            except (TypeError, ValueError):
+                return (1, player['name'])
+        players.sort(key=lambda p: (not p['is_starting'], not p['is_goalkeeper'], number_key(p)))
+        # Весь заявочный лист — пульту, чтобы записать гол и тому, кого нет в протоколе состава.
+        squad = sorted((person(m) for m in entry_squad(entry)), key=number_key)
+        return {
+            'name': entry.team.name,
+            'logo_url': get_tournament_team_logo_url(entry.team),
+            'trainer_name': entry.team.trainer_name,
+            'trainer_photo_url': get_tournament_media_url(entry.team.trainer_photo_path),
+            'players': players,
+            'squad': squad,
+        }
+
+    side_of = {match.home_entry_id: 'home', match.away_entry_id: 'away'}
+    base.update({
+        'stage_label': post_stage_label(match),
+        'home_team': team(match.home_entry),
+        'away_team': team(match.away_entry),
+        'events': [{
+            'side': side_of.get(e.entry_id),
+            'kind': e.kind,
+            'card': e.card,
+            'minute': e.minute,
+            'is_own_goal': bool(e.is_own_goal),
+            'is_penalty': bool(e.is_penalty),
+            'player': person(e.member),
+            'assist': person(e.assist_member),
+        } for e in events if side_of.get(e.entry_id)],
+    })
+    return base
+
+
+def live_tournament_matches(tournament):
+    matches = TournamentMatch.query.filter_by(tournament_id=tournament.id).all()
+    matches = [m for m in matches if not m.is_bye]
+    matches.sort(key=lambda m: (m.kickoff_at or datetime.max, m.age_group, m.round_no, m.id))
+    rows = []
+    for m in matches:
+        item = serialize_match(m)
+        rows.append({
+            'id': m.id,
+            'age_group': m.age_group,
+            'stage_label': post_stage_label(m),
+            'home': item['home']['team_name'],
+            'away': item['away']['team_name'],
+            'home_score': m.home_score,
+            'away_score': m.away_score,
+            'kickoff_at': item['kickoff_at'],
+            'pitch': m.pitch,
+            'ready': bool(m.home_entry_id and m.away_entry_id),
+        })
+    return rows
+
+
+def live_public_state(tournament, state):
+    match = None
+    if state['match_id']:
+        match = TournamentMatch.query.filter_by(id=state['match_id'], tournament_id=tournament.id).first()
+    return {
+        'success': True,
+        'server_now': now_ms(),
+        'version': state['version'],
+        'tournament': {'id': tournament.id, 'name': tournament.name},
+        'scene': state['scene'],
+        'show_logos': state['show_logos'],
+        'logos': live_logo_urls(state),
+        'clock': state['clock'],
+        'match': live_match_payload(match),
+    }
+
+
+def live_tournament_or_404(tournament_id, key):
+    ensure_tournament_tables()
+    tournament = db.session.get(Tournament, tournament_id)
+    if not tournament:
+        return None, None
+    state = load_live_state(tournament)
+    if not state['token'] or not secrets.compare_digest(str(key or ''), state['token']):
+        return None, None
+    return tournament, state
+
+
+@app.route('/live/<int:tournament_id>')
+def live_overlay_page(tournament_id):
+    tournament, _ = live_tournament_or_404(tournament_id, request.args.get('key'))
+    if not tournament:
+        return 'Неверная ссылка табло. Скопируйте её заново в пульте трансляции.', 404
+    return render_template('live_overlay.html', tournament=tournament, key=request.args.get('key'))
+
+
+@app.route('/api/live/<int:tournament_id>/state')
+def live_state_api(tournament_id):
+    tournament, state = live_tournament_or_404(tournament_id, request.args.get('key'))
+    if not tournament:
+        return jsonify({'success': False, 'message': 'Неверная ссылка табло'}), 404
+    response = jsonify(live_public_state(tournament, state))
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@app.route('/tournaments/<int:tournament_id>/live')
+@login_required
+def live_control_page(tournament_id):
+    if not has_tournament_permission('edit'):
+        return redirect(url_for('dashboard'))
+    ensure_tournament_tables()
+    tournament = db.session.get(Tournament, tournament_id)
+    if not tournament:
+        return redirect(url_for('tournaments_page'))
+    return render_template('live_control.html', tournament=tournament)
+
+
+def live_control_payload(tournament, state):
+    return {
+        'success': True,
+        'overlay_url': url_for('live_overlay_page', tournament_id=tournament.id,
+                               key=state['token'], _external=True),
+        'state': live_public_state(tournament, state),
+        'matches': live_tournament_matches(tournament),
+    }
+
+
+@app.route('/api/tournaments/<int:tournament_id>/live', methods=['GET', 'POST'])
+@login_required
+def live_control_api(tournament_id):
+    if not has_tournament_permission('edit'):
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    ensure_tournament_tables()
+    tournament = db.session.get(Tournament, tournament_id)
+    if not tournament:
+        return jsonify({'success': False, 'message': 'Турнир не найден'}), 404
+    state = load_live_state(tournament)
+
+    if request.method == 'GET':
+        if not state['token']:
+            state['token'] = secrets.token_urlsafe(12)
+            save_live_state(tournament, state)
+            db.session.commit()
+        return jsonify(live_control_payload(tournament, state))
+
+    data = request.get_json() or {}
+    clock = state['clock']
+    now = now_ms()
+
+    if 'match_id' in data:
+        try:
+            match_id = int(data['match_id']) if data['match_id'] else None
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Некорректный матч'}), 400
+        if match_id and not TournamentMatch.query.filter_by(id=match_id, tournament_id=tournament.id).first():
+            return jsonify({'success': False, 'message': 'Матч не найден'}), 404
+        if match_id != state['match_id']:
+            # Новый матч — таймер с нуля.
+            state['clock'] = clock = {'running': False, 'base_ms': 0, 'since_ms': 0, 'period': 1,
+                                      'half_minutes': clock.get('half_minutes', 0)}
+        state['match_id'] = match_id
+
+    if 'scene' in data:
+        if data['scene'] not in LIVE_SCENES:
+            return jsonify({'success': False, 'message': 'Неизвестная сцена'}), 400
+        state['scene'] = data['scene']
+
+    if 'show_logos' in data:
+        state['show_logos'] = bool(data['show_logos'])
+
+    if 'half_minutes' in data:
+        try:
+            half = int(data['half_minutes'] or 0)
+        except (TypeError, ValueError):
+            half = -1
+        if not 0 <= half <= 90:
+            return jsonify({'success': False, 'message': 'Длина тайма — от 0 до 90 минут'}), 400
+        clock['half_minutes'] = half
+
+    action = data.get('clock')
+    if action == 'start' and not clock['running']:
+        clock.update(running=True, since_ms=now)
+    elif action == 'pause' and clock['running']:
+        clock.update(running=False, base_ms=live_clock_elapsed(clock, now), since_ms=0)
+    elif action == 'reset':
+        clock.update(running=False, base_ms=0, since_ms=0)
+    elif action == 'next_period':
+        # Второй тайм начинается с отметки конца первого (20:00, 25:00…), если длина задана.
+        half_ms = clock.get('half_minutes', 0) * 60000
+        clock.update(running=False, since_ms=0, period=min(clock['period'] + 1, 4),
+                     base_ms=half_ms * clock['period'] if half_ms else 0)
+    elif action == 'prev_period':
+        half_ms = clock.get('half_minutes', 0) * 60000
+        period = max(clock['period'] - 1, 1)
+        clock.update(running=False, since_ms=0, period=period,
+                     base_ms=half_ms * (period - 1) if half_ms else 0)
+    elif action == 'adjust':
+        try:
+            delta = int(data.get('delta_seconds') or 0)
+        except (TypeError, ValueError):
+            delta = 0
+        elapsed = max(0, live_clock_elapsed(clock, now) + delta * 1000)
+        clock.update(base_ms=elapsed, since_ms=now if clock['running'] else 0)
+
+    save_live_state(tournament, state)
+    db.session.commit()
+    return jsonify(live_control_payload(tournament, state))
+
+
+@app.route('/api/tournaments/<int:tournament_id>/live/logo/<slot>', methods=['POST', 'DELETE'])
+@login_required
+def live_logo_api(tournament_id, slot):
+    if not has_tournament_permission('edit'):
+        return jsonify({'success': False, 'message': 'Нет доступа'}), 403
+    if slot not in LIVE_LOGO_SLOTS:
+        return jsonify({'success': False, 'message': 'Неизвестный логотип'}), 400
+    ensure_tournament_tables()
+    tournament = db.session.get(Tournament, tournament_id)
+    if not tournament:
+        return jsonify({'success': False, 'message': 'Турнир не найден'}), 404
+    state = load_live_state(tournament)
+    old = state['logos'].get(slot)
+    if request.method == 'DELETE':
+        delete_tournament_catalog_media(old, ('tournament_live_logo_',))
+        state['logos'][slot] = None
+    else:
+        file = request.files.get('logo')
+        if not file or not file.filename:
+            return jsonify({'success': False, 'message': 'Выберите файл логотипа'}), 400
+        try:
+            ext = detect_upload_image_extension(file)
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            filename = f"tournament_live_logo_{int(time.time())}_{uuid.uuid4().hex[:8]}{ext}"
+            # Табло показывают и в 4K — храним крупно, с прозрачностью.
+            save_optimized_logo_upload(file, os.path.join(app.config['UPLOAD_FOLDER'], filename), (1200, 1200))
+        except Exception as error:
+            return jsonify({'success': False, 'message': f'Не удалось сохранить логотип: {error}'}), 400
+        delete_tournament_catalog_media(old, ('tournament_live_logo_',))
+        state['logos'][slot] = os.path.join('frontend', 'static', 'uploads', filename)
+    save_live_state(tournament, state)
+    db.session.commit()
+    return jsonify(live_control_payload(tournament, state))
+
+
 @app.route('/api/public/tournaments')
 def public_tournaments_api():
     ensure_tournament_tables()
