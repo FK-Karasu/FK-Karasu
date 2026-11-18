@@ -1,5 +1,15 @@
 FROM python:3.11-slim
 
+# Зеркала пакетов. У провайдера сервера до deb.debian.org и pypi.org (CDN Fastly)
+# всего ~70 КБ/с, и полная сборка не укладывалась в таймаут. Зеркала Huawei отдают
+# 1,5–2 МБ/с. Другое зеркало: --build-arg APT_MIRROR=... / PIP_INDEX=...
+ARG APT_MIRROR=https://repo.huaweicloud.com
+ARG PIP_INDEX=https://repo.huaweicloud.com/repository/pypi/simple
+ENV PIP_INDEX_URL=${PIP_INDEX} \
+    PIP_DEFAULT_TIMEOUT=60 \
+    PIP_RETRIES=10
+RUN sed -i "s|http://deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources
+
 # Системные библиотеки и компилятор для CPU InsightFace
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
