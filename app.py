@@ -10551,7 +10551,7 @@ def live_clock_elapsed(clock, at_ms=None):
 
 def live_logo_urls():
     # В углу табло — логотип лиги KFL KIDS, прозрачный PNG без подложки.
-    return {'primary': url_for('static', filename='img/live/kfl-kids.png', v='2026111903')}
+    return {'primary': url_for('static', filename='img/live/kfl-kids.png', v='2026111904')}
 
 
 def live_match_payload(match):
