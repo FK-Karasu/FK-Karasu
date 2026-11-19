@@ -1614,6 +1614,67 @@
             </button>
         </div>
         <div class="mobile-more-grid">
+            {% if current_user.has_permission('tournaments', 'view') or current_user.has_permission('attendance', 'view') %}
+            <a href="{{ url_for('tournaments_page') }}" class="more-menu-item">
+                <div class="item-icon" style="background: rgba(255, 138, 0, 0.1); color: #ff8a00;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10 14.66v1.626a2 2 0 0 1-.976 1.696A5 5 0 0 0 7 21h10a5 5 0 0 0-2.024-3.018A2 2 0 0 1 14 16.286V14.66" />
+                        <path d="M18 9h1.5a1.5 1.5 0 0 0 0-3H18" />
+                        <path d="M6 9H4.5a1.5 1.5 0 0 1 0-3H6" />
+                        <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+                    </svg>
+                </div>
+                <span>Турниры</span>
+            </a>
+            {% endif %}
+
+            {% if current_user.has_permission('attendance', 'view') %}
+            <a href="{{ url_for('access_log_page') }}" class="more-menu-item">
+                <div class="item-icon" style="background: rgba(14, 165, 233, 0.1); color: #0ea5e9;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M8 3 4 7l4 4" />
+                        <path d="M4 7h16" />
+                        <path d="m16 21 4-4-4-4" />
+                        <path d="M20 17H4" />
+                    </svg>
+                </div>
+                <span>Журнал проходов</span>
+            </a>
+            {% endif %}
+
+            {% if current_user.has_permission('attendance', 'view') %}
+            <a href="{{ url_for('staff_timesheet_page') }}" class="more-menu-item">
+                <div class="item-icon" style="background: rgba(99, 102, 241, 0.1); color: #6366f1;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5" />
+                        <path d="M16 2v4" />
+                        <path d="M8 2v4" />
+                        <path d="M3 10h18" />
+                        <circle cx="16" cy="16" r="5" />
+                        <path d="M16 14v2.2l1.5.8" />
+                    </svg>
+                </div>
+                <span>Табель</span>
+            </a>
+            {% endif %}
+
+            {% if current_user.role == 'admin' or current_user.has_permission('settings', 'edit') %}
+            <a href="{{ url_for('event_page_editor') }}" class="more-menu-item">
+                <div class="item-icon" style="background: rgba(236, 72, 153, 0.1); color: #ec4899;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="18" height="7" x="3" y="3" rx="1" />
+                        <rect width="9" height="7" x="3" y="14" rx="1" />
+                        <rect width="5" height="7" x="16" y="14" rx="1" />
+                    </svg>
+                </div>
+                <span>Сайт EVENT</span>
+            </a>
+            {% endif %}
+
             {% if current_user.has_permission('finances', 'view') %}
             <a href="{{ url_for('finances_page') }}" class="more-menu-item">
                 <div class="item-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">
