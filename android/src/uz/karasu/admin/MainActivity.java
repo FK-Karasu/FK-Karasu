@@ -17,6 +17,7 @@ import android.provider.MediaStore;
 import android.util.Base64;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.URLUtil;
@@ -128,6 +129,15 @@ public class MainActivity extends Activity {
 
     // ---------- Навигация ----------
 
+    /** На пульте трансляции экран не гаснет: им управляют весь матч, не трогая телефон минутами. */
+    private void keepScreenOnFor(String url) {
+        Uri uri = url == null ? null : Uri.parse(url);
+        String path = uri == null || uri.getPath() == null ? "" : uri.getPath();
+        boolean live = uri != null && isOwnHost(uri) && path.matches("/tournaments/\\d+/live/?");
+        if (live) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
     private class Client extends WebViewClient {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -146,9 +156,15 @@ public class MainActivity extends Activity {
         @Override
         public void onPageFinished(WebView view, String url) {
             progress.setVisibility(View.GONE);
+            keepScreenOnFor(url);
             CookieManager.getInstance().flush();
             view.evaluateJavascript(DOWNLOAD_HOOK, null);
             view.evaluateJavascript(APP_CSS, null);
+        }
+
+        @Override
+        public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+            keepScreenOnFor(url);
         }
 
         @Override
