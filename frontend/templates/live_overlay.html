@@ -68,6 +68,12 @@
         }
         body.no-plate .logo-plate { background: transparent; box-shadow: none; padding: 0; }
         .logo-plate img { max-height: 100%; max-width: 100%; object-fit: contain; }
+        .logo-badge {
+            width: calc(var(--u) * 120);
+            height: calc(var(--u) * 120);
+            filter: drop-shadow(0 calc(var(--u) * 8) calc(var(--u) * 18) rgba(0, 0, 0, .35));
+        }
+        .logo-badge img { width: 100%; height: 100%; display: block; }
 
         /* ---------- Счёт в левом верхнем углу ---------- */
         .scorebug {
@@ -496,7 +502,7 @@
         const list = [logos.primary].filter(Boolean);
         const visible = state.show_logos && state.scene !== 'hidden' && list.length;
         box.classList.toggle('hidden', !visible);
-        const html = list.map((url) => `<div class="logo-plate"><img src="${esc(url)}" alt=""></div>`).join('');
+        const html = list.map((url) => `<div class="logo-badge"><img src="${esc(url)}" alt=""></div>`).join('');
         if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; }
     }
 

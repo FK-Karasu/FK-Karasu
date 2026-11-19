@@ -10550,8 +10550,8 @@ def live_clock_elapsed(clock, at_ms=None):
 
 
 def live_logo_urls():
-    # В углу табло — только логотип клуба из настроек.
-    return {'primary': get_system_logo_url(get_club_settings_instance())}
+    # В углу табло — значок лиги KFL KIDS (круглый, со своим тёмным фоном).
+    return {'primary': url_for('static', filename='img/live/kfl-kids.png', v='2026111901')}
 
 
 def live_match_payload(match):
