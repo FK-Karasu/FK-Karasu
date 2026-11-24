@@ -12,7 +12,7 @@
     <link rel="icon" href="{{ system_square_logo_url or url_for('static', filename='uploads/favicon.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/onest/onest.css') }}">
     <style>
-        {% if page.theme and page.theme.accent %}:root { --accent-custom: {{ page.theme.accent }}; }{% endif %}
+        {% if accent %}:root { --accent-custom: {{ accent }}; --accent-ink-custom: {{ accent_ink }}; }{% endif %}
         @font-face {
             font-family: 'Unbounded';
             src: url("{{ url_for('static', filename='vendor/onest-ttf/Unbounded.ttf') }}") format('truetype');
@@ -27,7 +27,11 @@
             --text: #ffffff;
             --muted: #a3a3ad;
             --accent: var(--accent-custom, #ff8a00);
-            --accent-ink: #1a0f00;
+            --accent-ink: var(--accent-ink-custom, #1a0f00);
+            /* Оттенки основного цвета: подложки, наведение, тёмный вариант для светлых карточек. */
+            --accent-soft: color-mix(in srgb, var(--accent) 15%, transparent);
+            --accent-hover: color-mix(in srgb, var(--accent) 82%, #fff);
+            --accent-deep: color-mix(in srgb, var(--accent) 72%, #000);
             --radius: 22px;
             --display: 'Unbounded', 'Onest', system-ui, sans-serif;
             --body: 'Onest', system-ui, -apple-system, sans-serif;
@@ -132,7 +136,7 @@
         .btn:hover { transform: translateY(-2px); }
 
         .btn-accent { background: var(--accent); color: var(--accent-ink); }
-        .btn-accent:hover { background: #ffa033; }
+        .btn-accent:hover { background: var(--accent-hover); }
         .btn-ghost { border-color: rgba(255, 255, 255, .35); color: var(--text); }
         .btn-ghost:hover { border-color: var(--text); }
         .btn-small { height: 42px; padding: 0 18px; font-size: 12px; }
@@ -396,7 +400,7 @@
         .stay-tag {
             padding: 6px 12px;
             border-radius: 999px;
-            background: rgba(255, 138, 0, .14);
+            background: var(--accent-soft);
             color: var(--accent);
             font-size: 12.5px;
             font-weight: 700;
@@ -460,6 +464,39 @@
         }
 
         .stay-photos button:first-child { grid-row: 1 / 3; }
+        .stay-photos.one, .stay-photos.two { grid-template-rows: 1fr; }
+        .stay-photos.one { grid-template-columns: 1fr; }
+        .stay-photos.one button:first-child, .stay-photos.two button:first-child { grid-row: auto; }
+        .stay.no-photos { grid-template-columns: 1fr; }
+
+        /* «+N фото» на последней плитке — остальные открываются в просмотре */
+        .photo .more {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            background: rgba(0, 0, 0, .55);
+            color: #fff;
+            font-family: var(--display);
+            font-size: clamp(22px, 2.4vw, 34px);
+            font-weight: 800;
+            transition: background .2s;
+        }
+        .photo:hover .more { background: rgba(0, 0, 0, .4); }
+
+        /* Свои блоки */
+        .cblock { position: relative; }
+        .cblock .section-head { margin-bottom: 30px; }
+        .cblock .title { margin-bottom: 0; }
+        .cblock .subtitle { white-space: pre-line; }
+        .cblock.light .subtitle { color: #4b4f58; }
+        .cblock .checks + .cgallery, .cblock .ed-add + .cgallery, .cblock .ed-add + .ed-photos { margin-top: 30px; }
+        .cgallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 12px;
+        }
+        .cgallery .photo { aspect-ratio: 4 / 3; }
 
         .photo {
             position: relative;
@@ -559,8 +596,8 @@
             color: #111;
         }
 
-        .card.light .eyebrow { color: #c26700; }
-        .card.light .eyebrow::before { background: #c26700; }
+        .card.light .eyebrow { color: var(--accent-deep); }
+        .card.light .eyebrow::before { background: var(--accent-deep); }
 
         .card .title {
             margin-bottom: 28px;
@@ -620,7 +657,7 @@
             transition: transform .25s, border-color .25s;
         }
 
-        .tour:hover { transform: translateY(-4px); border-color: rgba(255, 138, 0, .6); }
+        .tour:hover { transform: translateY(-4px); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
 
         .tour-poster {
             aspect-ratio: 16 / 10;
@@ -805,6 +842,35 @@
             font-size: 26px;
             cursor: pointer;
         }
+        .lightbox .lb-nav {
+            top: 50%;
+            right: auto;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, .16);
+            color: #fff;
+            font-size: 30px;
+            line-height: 1;
+        }
+        .lightbox .lb-nav:hover { background: rgba(255, 255, 255, .3); }
+        .lightbox .lb-prev { left: 18px; }
+        .lightbox .lb-next { left: auto; right: 18px; }
+        .lightbox .lb-nav[hidden], .lightbox .lb-count[hidden] { display: none; }
+        .lightbox .lb-count {
+            position: absolute;
+            left: 50%;
+            bottom: 18px;
+            transform: translateX(-50%);
+            padding: 6px 14px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, .14);
+            color: #fff;
+            font-weight: 700;
+            font-size: 14px;
+        }
+        @media (max-width: 560px) {
+            .lightbox .lb-nav { top: auto; bottom: 14px; transform: none; width: 44px; height: 44px; }
+            .lightbox .lb-count { bottom: 24px; }
+        }
 
         /* Появление при прокрутке */
         .reveal {
@@ -847,6 +913,7 @@
             .hero-actions .btn, .cta-actions .btn { width: 100%; }
             .hero .arcs { opacity: .22; }
             .stay { padding: 16px; }
+            .cgallery { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
         }
     </style>
 </head>
@@ -867,6 +934,12 @@
     {% macro e(path) %}{% if edit_mode %} data-edit="{{ path }}"{% endif %}{% endmacro %}
     {% macro img(path) %}{% if edit_mode %} data-edit-img="{{ path }}"{% endif %}{% endmacro %}
     {% macro rm(list_path, index) %}{% if edit_mode %}<button type="button" class="ed-remove" data-ed-remove="{{ list_path }}" data-index="{{ index }}" title="Убрать">✕</button>{% endif %}{% endmacro %}
+    {% macro mv(list_path, index, total) %}{% if edit_mode and total > 1 %}<span class="ed-move">{% if index > 0 %}<button type="button" data-ed-move="{{ list_path }}" data-index="{{ index }}" data-dir="-1" title="Раньше">←</button>{% endif %}{% if index < total - 1 %}<button type="button" data-ed-move="{{ list_path }}" data-index="{{ index }}" data-dir="1" title="Позже">→</button>{% endif %}</span>{% endif %}{% endmacro %}
+    {# Все фото списка в конструкторе: замена кликом, ✕, порядок стрелками, добавление сразу нескольких. #}
+    {% macro edit_photos(list_path, photos) %}{% if edit_mode %}<div class="ed-photos">
+        {% for photo in photos %}<div class="ed-thumb ed-item{% if loop.first %} main{% endif %}"><img src="{{ url_for('static', filename=photo) }}" alt="" loading="lazy" data-edit-img="{{ list_path }}.{{ loop.index0 }}">{{ rm(list_path, loop.index0) }}{{ mv(list_path, loop.index0, photos|length) }}{% if loop.first and photos|length > 1 %}<span class="ed-main-label">главное</span>{% endif %}</div>{% endfor %}
+        <button type="button" class="ed-thumb ed-thumb-add" data-ed-photos-add="{{ list_path }}">+ фото<small>можно сразу несколько</small></button>
+    </div>{% endif %}{% endmacro %}
     {% macro add(list_path, kind, label) %}{% if edit_mode %}<button type="button" class="ed-add" data-ed-add="{{ list_path }}" data-kind="{{ kind }}">+ {{ label }}</button>{% endif %}{% endmacro %}
     {% set arcs %}
         <svg class="arcs" viewBox="0 0 400 400" aria-hidden="true">
@@ -948,7 +1021,9 @@
                 <div class="stay-list">
                     {% for variant in page.stay.variants %}
                         {% set vp = 'stay.variants.' ~ loop.index0 %}
-                        <article class="stay reveal ed-item">
+                        {% set vi = loop.index0 %}
+                        {% set photos = variant.photos or [] %}
+                        <article class="stay reveal ed-item{% if not photos and not edit_mode %} no-photos{% endif %}">
                             {{ rm('stay.variants', loop.index0) }}
                             <div class="stay-info">
                                 <div class="stay-top">
@@ -960,18 +1035,23 @@
                                 {{ add(vp ~ '.features', 'text', 'пункт') }}
                                 <div class="price"><b{{ e(vp ~ '.price') }}>{{ variant.price }}</b><span>/ <span{{ e(vp ~ '.unit') }}>{{ variant.unit }}</span></span></div>
                             </div>
-                            <div class="stay-photos">
-                                {% for index in range(3) %}
-                                    {% set photo = variant.photos[index] if variant.photos|length > index else '' %}
-                                    {% if photo or edit_mode %}
-                                    <button class="photo" type="button" {% if photo %}data-zoom="{{ url_for('static', filename=photo) }}"{% endif %}
+                            {% if edit_mode %}
+                                {{ edit_photos(vp ~ '.photos', photos) }}
+                            {% elif photos %}
+                            <div class="stay-photos{% if photos|length == 1 %} one{% elif photos|length == 2 %} two{% endif %}">
+                                {% for photo in photos %}
+                                    {% if loop.index <= 3 %}
+                                    <button class="photo" type="button" data-zoom="{{ url_for('static', filename=photo) }}" data-gallery="stay-{{ vi }}"
                                         aria-label="Открыть фото: {{ variant.name }}">
-                                        {% if photo %}<img src="{{ url_for('static', filename=photo) }}" alt="{{ variant.name }}" loading="lazy"{{ img(vp ~ '.photos.' ~ index) }}>
-                                        {% else %}<span class="ed-photo-empty"{{ img(vp ~ '.photos.' ~ index) }}>+ фото</span>{% endif %}
+                                        <img src="{{ url_for('static', filename=photo) }}" alt="{{ variant.name }}" loading="lazy">
+                                        {% if loop.index == 3 and photos|length > 3 %}<span class="more">+{{ photos|length - 3 }} фото</span>{% endif %}
                                     </button>
+                                    {% else %}
+                                    <span hidden data-zoom="{{ url_for('static', filename=photo) }}" data-gallery="stay-{{ vi }}"></span>
                                     {% endif %}
                                 {% endfor %}
                             </div>
+                            {% endif %}
                         </article>
                     {% endfor %}
                     {{ add('stay.variants', 'variant', 'вариант проживания') }}
@@ -991,7 +1071,7 @@
                     {% for item in page.infrastructure['items'] %}
                         {% set ip = 'infrastructure.items.' ~ loop.index0 %}
                         <figure class="photo reveal ed-item {{ item.size or '' }}" style="margin:0">
-                            <button class="photo" type="button" data-zoom="{{ url_for('static', filename=item.image) }}"
+                            <button class="photo" type="button" data-zoom="{{ url_for('static', filename=item.image) }}" data-gallery="infra"
                                 aria-label="Открыть фото: {{ item.caption }}" style="width:100%;height:100%">
                                 <img src="{{ url_for('static', filename=item.image) }}" alt="{{ item.caption }}" loading="lazy"{{ img(ip ~ '.image') }}>
                             </button>
@@ -1036,6 +1116,39 @@
                 </div>
             </div>
         </section>
+
+        {% for block in page.blocks or [] %}
+        {% set bp = 'blocks.' ~ loop.index0 %}
+        {% set bi = loop.index0 %}
+        <section class="block" id="block-{{ loop.index }}" style="padding-top:0">
+            <div class="wrap">
+                <div class="card cblock{% if block.style == 'light' %} light{% endif %} reveal ed-item">
+                    {% if edit_mode %}<div class="ed-block-bar">
+                        <span>Свой блок {{ loop.index }}</span>
+                        {% if not loop.first %}<button type="button" data-ed-move="blocks" data-index="{{ bi }}" data-dir="-1">↑ выше</button>{% endif %}
+                        {% if not loop.last %}<button type="button" data-ed-move="blocks" data-index="{{ bi }}" data-dir="1">↓ ниже</button>{% endif %}
+                        <button type="button" data-ed-style="{{ bp }}">{{ 'Тёмный фон' if block.style == 'light' else 'Светлый фон' }}</button>
+                        <button type="button" class="danger" data-ed-remove="blocks" data-index="{{ bi }}">Удалить блок</button>
+                    </div>{% endif %}
+                    <div class="section-head">
+                        <div>
+                            {% if block.eyebrow or edit_mode %}<p class="eyebrow"{{ e(bp ~ '.eyebrow') }}>{{ block.eyebrow }}</p>{% endif %}
+                            {% if block.title or edit_mode %}<h2 class="title"{{ e(bp ~ '.title') }}>{{ block.title }}</h2>{% endif %}
+                        </div>
+                        {% if block.text or edit_mode %}<p class="subtitle"{{ e(bp ~ '.text') }}>{{ block.text }}</p>{% endif %}
+                    </div>
+                    {% if block['items'] %}<ul class="checks">{% for item in block['items'] %}<li class="ed-item"><span{{ e(bp ~ '.items.' ~ loop.index0) }}>{{ item }}</span>{{ rm(bp ~ '.items', loop.index0) }}</li>{% endfor %}</ul>{% endif %}
+                    {{ add(bp ~ '.items', 'text', 'пункт списка') }}
+                    {% if edit_mode %}
+                        {{ edit_photos(bp ~ '.photos', block.photos or []) }}
+                    {% elif block.photos %}
+                        <div class="cgallery">{% for photo in block.photos %}<button class="photo" type="button" data-zoom="{{ url_for('static', filename=photo) }}" data-gallery="block-{{ bi }}" aria-label="Открыть фото"><img src="{{ url_for('static', filename=photo) }}" alt="{{ block.title }}" loading="lazy"></button>{% endfor %}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+        {% endfor %}
+        {% if edit_mode %}<div class="wrap ed-add-block">{{ add('blocks', 'block', 'свой блок: заголовок, текст, список, фото') }}</div>{% endif %}
 
         <section class="block" id="tournaments" style="padding-top:0">
             <div class="wrap">
@@ -1111,7 +1224,10 @@
 
     <div class="lightbox" id="lightbox" hidden>
         <img alt="">
-        <button type="button" aria-label="Закрыть">&times;</button>
+        <button type="button" class="lb-close" aria-label="Закрыть">&times;</button>
+        <button type="button" class="lb-nav lb-prev" aria-label="Предыдущее фото">‹</button>
+        <button type="button" class="lb-nav lb-next" aria-label="Следующее фото">›</button>
+        <span class="lb-count"></span>
     </div>
 
     <script>
@@ -1135,29 +1251,57 @@
                 items.forEach((item) => item.classList.add('in'));
             }
 
-            // Просмотр фото крупно.
+            // Просмотр фото крупно; фото одного варианта или блока листаются стрелками и свайпом.
             const box = document.getElementById('lightbox');
             const img = box.querySelector('img');
+            const count = box.querySelector('.lb-count');
+            let list = [];
+            let index = 0;
+            function showAt(next) {
+                index = (next + list.length) % list.length;
+                const item = list[index];
+                img.src = item.dataset.zoom;
+                img.alt = item.getAttribute('aria-label') || '';
+                const many = list.length > 1;
+                box.querySelectorAll('.lb-nav').forEach((b) => { b.hidden = !many; });
+                count.hidden = !many;
+                count.textContent = `${index + 1} / ${list.length}`;
+            }
             document.addEventListener('click', (event) => {
                 const photo = event.target.closest('[data-zoom]');
-                if (photo) {
-                    img.src = photo.dataset.zoom;
-                    img.alt = photo.getAttribute('aria-label') || '';
+                if (photo && box.hidden) {
+                    const group = photo.dataset.gallery;
+                    list = group ? [...document.querySelectorAll(`[data-zoom][data-gallery="${group}"]`)] : [photo];
+                    showAt(Math.max(0, list.indexOf(photo)));
                     box.hidden = false;
-                    box.querySelector('button').focus();
+                    box.querySelector('.lb-close').focus();
                     return;
                 }
-                if (!box.hidden && (event.target === box || event.target.closest('#lightbox button'))) box.hidden = true;
+                if (box.hidden) return;
+                if (event.target.closest('.lb-prev')) { showAt(index - 1); return; }
+                if (event.target.closest('.lb-next')) { showAt(index + 1); return; }
+                if (event.target === box || event.target.closest('.lb-close')) box.hidden = true;
             });
             document.addEventListener('keydown', (event) => {
+                if (box.hidden) return;
                 if (event.key === 'Escape') box.hidden = true;
+                if (event.key === 'ArrowLeft' && list.length > 1) showAt(index - 1);
+                if (event.key === 'ArrowRight' && list.length > 1) showAt(index + 1);
+            });
+            let touchX = null;
+            box.addEventListener('touchstart', (event) => { touchX = event.touches[0].clientX; }, { passive: true });
+            box.addEventListener('touchend', (event) => {
+                if (touchX == null || list.length < 2) return;
+                const dx = event.changedTouches[0].clientX - touchX;
+                touchX = null;
+                if (Math.abs(dx) > 50) showAt(index + (dx < 0 ? 1 : -1));
             });
         })();
     </script>
 {% if edit_mode %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/event_editor.css') }}?v=2026101702">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/event_editor.css') }}?v=2026112501">
     <script type="application/json" id="eventContent">{{ page | tojson }}</script>
-    <script src="{{ url_for('static', filename='js/event_editor.js') }}?v=2026101702"></script>
+    <script src="{{ url_for('static', filename='js/event_editor.js') }}?v=2026112501"></script>
 {% endif %}
 </body>
 </html>

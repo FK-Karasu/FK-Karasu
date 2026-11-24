@@ -2947,15 +2947,33 @@ def event_tournament_cards(limit=6):
     return cards
 
 
+EVENT_HEX_COLOR = re.compile(r'^#[0-9a-fA-F]{6}$')
+
+
+def event_accent_ink(accent):
+    """Цвет текста на кнопках основного цвета: тёмный на светлом, белый на тёмном (по контрасту WCAG)."""
+    def channel(value):
+        value /= 255
+        return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
+    r, g, b = (int(accent[i:i + 2], 16) for i in (1, 3, 5))
+    lum = 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+    return '#14110d' if (lum + 0.05) / 0.05 >= 1.05 / (lum + 0.05) else '#ffffff'
+
+
 def render_event_page(edit_mode=False):
     try:
         tournaments = event_tournament_cards()
     except Exception as error:
         print(f'Турниры для event-страницы не загрузились: {error}')
         tournaments = []
+    page = load_event_page(draft=edit_mode)
+    accent = str((page.get('theme') or {}).get('accent') or '')
+    accent = accent if EVENT_HEX_COLOR.match(accent) else None
     return render_template(
         'event.html',
-        page=load_event_page(draft=edit_mode),
+        page=page,
+        accent=accent,
+        accent_ink=event_accent_ink(accent) if accent else None,
         tournaments=tournaments,
         main_site_url=main_site_url(),
         year=get_local_date().year,
@@ -2985,6 +3003,27 @@ def validate_event_content(content):
     for variant in content['stay'].get('variants', []):
         variant.setdefault('features', [])
         variant.setdefault('photos', [])
+    # Цвет вставляется прямо в CSS — пропускаем только #rrggbb.
+    theme = content.get('theme') if isinstance(content.get('theme'), dict) else {}
+    accent = str(theme.get('accent') or '')
+    content['theme'] = {'accent': accent.lower()} if EVENT_HEX_COLOR.match(accent) else {}
+
+    def strings(value):
+        return [str(item) for item in value if isinstance(item, str)] if isinstance(value, list) else []
+
+    blocks = []
+    for block in content.get('blocks') if isinstance(content.get('blocks'), list) else []:
+        if not isinstance(block, dict):
+            continue
+        blocks.append({
+            'eyebrow': str(block.get('eyebrow') or ''),
+            'title': str(block.get('title') or ''),
+            'text': str(block.get('text') or ''),
+            'items': strings(block.get('items')),
+            'photos': strings(block.get('photos')),
+            'style': 'light' if block.get('style') == 'light' else 'dark',
+        })
+    content['blocks'] = blocks
     text = json.dumps(content, ensure_ascii=False)
     if len(text) > 400_000:
         raise ValueError('Слишком много текста на странице')
