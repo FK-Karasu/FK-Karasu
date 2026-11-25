@@ -259,6 +259,7 @@ class Student(db.Model):
     
     # Паспортные данные
     birth_year = db.Column(db.Integer)
+    birth_date = db.Column(db.Date)  # Полная дата рождения; birth_year берётся из неё
     passport_series = db.Column(db.String(10))
     passport_number = db.Column(db.String(20))
     passport_issued_by = db.Column(db.String(200))

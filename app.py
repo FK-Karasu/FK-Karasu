@@ -2341,6 +2341,10 @@ def ensure_students_columns():
                 try:
                     conn.execute(db.text("ALTER TABLE students ADD COLUMN birth_year INTEGER"))
                 except Exception: pass
+            if 'birth_date' not in student_columns:
+                try:
+                    conn.execute(db.text("ALTER TABLE students ADD COLUMN birth_date DATE"))
+                except Exception: pass
             if 'passport_series' not in student_columns:
                 try:
                     conn.execute(db.text("ALTER TABLE students ADD COLUMN passport_series VARCHAR(10)"))
@@ -4722,6 +4726,33 @@ def get_students_list():
     return jsonify(result)
 
 
+def parse_birth_input(raw):
+    """«09.02.2016», «9.2.2016», «2016-02-09» или просто «2016» → (дата или None, год или None).
+
+    Пусто → (None, None). Ошибка формата → ValueError с текстом для пользователя.
+    """
+    text = (raw or '').strip()
+    if not text:
+        return None, None
+    max_year = get_local_date().year
+    if re.fullmatch(r'\d{4}', text):
+        year = int(text)
+        if not 1900 <= year <= max_year:
+            raise ValueError(f'Год рождения должен быть от 1900 до {max_year}')
+        return None, year
+    for fmt in ('%d.%m.%Y', '%Y-%m-%d'):
+        try:
+            value = datetime.strptime(text, fmt).date()
+            break
+        except ValueError:
+            value = None
+    if value is None:
+        raise ValueError('Дата рождения в формате ДД.ММ.ГГГГ, например 09.02.2016')
+    if not 1900 <= value.year <= max_year or value > get_local_date():
+        raise ValueError('Проверьте дату рождения: она не может быть в будущем')
+    return value, value.year
+
+
 @app.route('/api/students/add', methods=['POST'])
 @login_required
 def add_student():
@@ -4789,6 +4820,14 @@ def add_student():
         else:
             admission_date = get_local_date()
 
+        birth_date = None
+        if 'birth_date' in request.form:
+            try:
+                birth_date, parsed_year = parse_birth_input(request.form.get('birth_date'))
+            except ValueError as error:
+                return jsonify({'success': False, 'message': str(error)}), 400
+            birth_year = parsed_year
+
         # Параметры ученика
         height = request.form.get('height')
         weight = request.form.get('weight')
@@ -4825,6 +4864,7 @@ def add_student():
             street=street,
             house_number=house_number,
             birth_year=safe_int(birth_year),
+            birth_date=birth_date,
             passport_series=passport_series,
             passport_number=passport_number,
             passport_issued_by=passport_issued_by,
@@ -4938,6 +4978,7 @@ def get_student(student_id):
         'street': student.street,
         'house_number': student.house_number,
         'birth_year': student.birth_year,
+        'birth_date': student.birth_date.isoformat() if student.birth_date else None,
         'passport_series': student.passport_series,
         'passport_number': student.passport_number,
         'passport_issued_by': student.passport_issued_by,
@@ -5057,7 +5098,12 @@ def update_student(student_id):
             student.street = request.form['street'] or None
         if 'house_number' in request.form:
             student.house_number = request.form['house_number'] or None
-        if 'birth_year' in request.form:
+        if 'birth_date' in request.form:
+            try:
+                student.birth_date, student.birth_year = parse_birth_input(request.form['birth_date'])
+            except ValueError as error:
+                return jsonify({'success': False, 'message': str(error)}), 400
+        elif 'birth_year' in request.form:
             student.birth_year = safe_int(request.form['birth_year'])
         if 'passport_series' in request.form:
             student.passport_series = request.form['passport_series'] or None
@@ -14932,7 +14978,8 @@ def draw_student_form_page(canvas, student, settings=None):
 
     y = section('Данные ученика', y)
     y = two_fields(('Фамилия, имя, отчество', student.full_name),
-                   ('Дата рождения', student.birth_year or ''), y)
+                   ('Дата рождения', student.birth_date.strftime('%d.%m.%Y') if student.birth_date
+                    else (student.birth_year or '')), y)
     y = two_fields(('Телефон ученика', student.phone),
                    ('Телефон родителя', student.parent_phone), y)
 

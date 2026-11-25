@@ -5498,8 +5498,9 @@
                                 </div>
                                 <input type="hidden" name="full_name" id="full_name_hidden">
                                 <div class="form-group">
-                                    <label>№ школы</label>
-                                    <input type="text" name="school_number" placeholder="Школа № 12">
+                                    <label>Дата рождения</label>
+                                    <input type="text" name="birth_date" class="birth-date-input" inputmode="numeric"
+                                        maxlength="10" autocomplete="off" placeholder="09.02.2016">
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group">
@@ -5553,6 +5554,10 @@
                                 <div class="form-group">
                                     <label>Дата принятия</label>
                                     <input type="date" name="admission_date" id="admission_date">
+                                </div>
+                                <div class="form-group">
+                                    <label>№ школы</label>
+                                    <input type="text" name="school_number" placeholder="Школа № 12">
                                 </div>
                                 <div class="form-group">
                                     <label>Группа</label>
@@ -5692,10 +5697,6 @@
                     <div class="form-tab-content" id="tab-passport">
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
                             <div>
-                                <div class="form-group">
-                                    <label>Год рождения</label>
-                                    <input type="number" name="birth_year" min="1900" max="2025" placeholder="2010">
-                                </div>
                                 <div class="form-row three-col">
                                     <div class="form-group">
                                         <label>Серия паспорта</label>
@@ -5833,9 +5834,9 @@
                                 </div>
                                 <input type="hidden" id="edit_full_name" name="full_name" required>
                                 <div class="form-group">
-                                    <label>№ школы</label>
-                                    <input type="text" id="edit_school_number" name="school_number"
-                                        placeholder="Школа № 12">
+                                    <label>Дата рождения</label>
+                                    <input type="text" id="edit_birth_date" name="birth_date" class="birth-date-input" inputmode="numeric"
+                                        maxlength="10" autocomplete="off" placeholder="09.02.2016">
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group">
@@ -5889,6 +5890,11 @@
                                 <div class="form-group">
                                     <label>Дата принятия</label>
                                     <input type="date" id="edit_admission_date" name="admission_date">
+                                </div>
+                                <div class="form-group">
+                                    <label>№ школы</label>
+                                    <input type="text" id="edit_school_number" name="school_number"
+                                        placeholder="Школа № 12">
                                 </div>
                                 <div class="form-group">
                                     <label>Группа</label>
@@ -6023,11 +6029,6 @@
                     <div class="form-tab-content" id="edit-tab-passport">
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
                             <div>
-                                <div class="form-group">
-                                    <label>Год рождения</label>
-                                    <input type="number" id="edit_birth_year" name="birth_year" min="1950" max="2020"
-                                        placeholder="2010">
-                                </div>
                                 <div class="form-row three-col">
                                     <div class="form-group">
                                         <label>Серия</label>
@@ -6518,7 +6519,7 @@
         })();
     </script>
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/students.js') }}?v=2026101601"></script>
+    <script src="{{ url_for('static', filename='js/students.js') }}?v=2026112501"></script>
     <script src="{{ url_for('static', filename='js/students_rewards.js') }}"></script>
     <script src="{{ url_for('static', filename='js/students_cards.js') }}"></script>
     <script src="{{ url_for('static', filename='js/students_params.js') }}"></script>
@@ -7476,11 +7477,22 @@
         }
 
         function buildStudentParamsHtml(student) {
-            const currentYear = new Date().getFullYear();
-            const age = student.birth_year ? `${currentYear - Number(student.birth_year)} лет` : '';
+            const today = new Date();
+            const currentYear = today.getFullYear();
+            let age = student.birth_year ? `${currentYear - Number(student.birth_year)} лет` : '';
+            let birthText = '';
+            if (student.birth_date) {
+                // Точный возраст по полной дате: день рождения в этом году ещё мог не наступить.
+                const [y, m, d] = student.birth_date.split('-').map(Number);
+                let years = currentYear - y;
+                if (today.getMonth() + 1 < m || (today.getMonth() + 1 === m && today.getDate() < d)) years -= 1;
+                age = `${years} лет`;
+                birthText = `${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}.${y}`;
+            }
             const side = student.dominant_side === 'left' ? 'Левша'
                 : student.dominant_side === 'right' ? 'Правша' : '';
             return `<div id="studentParams_${student.id}">` + [
+                scRow('Дата рождения', birthText),
                 scRow('Возраст', age),
                 scRow('Вес', student.weight ? `${student.weight} кг` : ''),
                 scRow('Рост', student.height ? `${student.height} см` : ''),

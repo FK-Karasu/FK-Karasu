@@ -1310,7 +1310,7 @@ document.addEventListener('click', async (e) => {
         document.getElementById('edit_parent_phone').value = student.parent_phone || '';
         document.getElementById('edit_street').value = student.street || '';
         document.getElementById('edit_house_number').value = student.house_number || '';
-        document.getElementById('edit_birth_year').value = student.birth_year || '';
+        document.getElementById('edit_birth_date').value = formatBirthDate(student);
         document.getElementById('edit_passport_series').value = student.passport_series || '';
         document.getElementById('edit_passport_number').value = student.passport_number || '';
         document.getElementById('edit_passport_issued_by').value = student.passport_issued_by || '';
@@ -2011,5 +2011,35 @@ document.addEventListener('DOMContentLoaded', () => {
             groupFilterSelect.value = '';
             groupFilterSelect.dispatchEvent(new Event('change'));
         });
+    }
+});
+
+
+// Дата рождения: ДД.ММ.ГГГГ. Если известен только год — можно ввести «2016».
+function formatBirthDate(student) {
+    if (student.birth_date) {
+        const [y, m, d] = String(student.birth_date).split('-');
+        if (y && m && d) return `${d}.${m}.${y}`;
+    }
+    return student.birth_year ? String(student.birth_year) : '';
+}
+
+// Пока вводят — только цифры и точки; при выходе из поля «09022016» превращается в «09.02.2016».
+document.addEventListener('input', (event) => {
+    const input = event.target;
+    if (!input.classList || !input.classList.contains('birth-date-input')) return;
+    const clean = input.value.replace(/[,/\-]/g, '.').replace(/[^\d.]/g, '');
+    if (clean !== input.value) input.value = clean;
+});
+document.addEventListener('focusout', (event) => {
+    const input = event.target;
+    if (!input.classList || !input.classList.contains('birth-date-input')) return;
+    const value = input.value.trim();
+    const digits = value.replace(/\D/g, '');
+    if (!value.includes('.') && digits.length === 8) {
+        input.value = `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
+    } else {
+        const m = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+        if (m) input.value = `${m[1].padStart(2, '0')}.${m[2].padStart(2, '0')}.${m[3]}`;
     }
 });
